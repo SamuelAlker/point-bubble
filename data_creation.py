@@ -61,7 +61,7 @@ def make_lines(x, y, resolution):
             if i not in visited:
                 checked.append(i)
                 values.append(
-                    (current_x - x[i])**2 + (current_y - y[i])**2
+                    (current_x - x[i]) ** 2 + (current_y - y[i]) ** 2
                 )
         closest = min(values)
         smallest = checked[values.index(closest)]
@@ -81,16 +81,16 @@ def make_lines(x, y, resolution):
     for i in range(0, len(new_x)):
         current_x = float(new_x[i])
         current_y = float(new_y[i])
-        if i+1 != len(new_x):
-            next_x = float(new_x[i+1])
-            next_y = float(new_y[i+1])
+        if i + 1 != len(new_x):
+            next_x = float(new_x[i + 1])
+            next_y = float(new_y[i + 1])
         else:
             next_x = float(new_x[0])
             next_y = float(new_y[0])
         angle_to_next = np.arctan2(next_x - current_x, next_y - current_y)
-        distance = np.sqrt((current_x - next_x)**2 + (current_y - next_y)**2)
+        distance = np.sqrt((current_x - next_x) ** 2 + (current_y - next_y) ** 2)
         loops = 0
-        while resolution*loops < distance:
+        while resolution * loops < distance:
             filled_x.append(current_x)
             filled_y.append(current_y)
             loops += 1
@@ -156,7 +156,8 @@ def convert_dat_files(variant_range, resolution=0.0001, inversions=[False]):
                     y = row[1]
                     step_number = row[2]
                     # Saving to memory
-                    data = np.array([((-1) ** (not inversion)) * x, y + (variant / BASE_SIZE)]) # numpy switch the x and y here!
+                    data = np.array(
+                        [((-1) ** (not inversion)) * x, y + (variant / BASE_SIZE)])  # numpy switch the x and y here!
                     np.save("Simulation_data_extrapolated/Simulation_{}_{}_{}_{}/data_{}".format(
                         inversion, variant, resolution, simulation_index, step_number
                     ), data)
@@ -184,11 +185,11 @@ def positive_values(x_array, y_array):
 
 def plot_for_offset(file_num):
     # Data for plotting
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_"+ str(file_num)+".npy")
+    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_" + str(file_num) + ".npy")
 
     idx = find_zero(file[1], file[0])
     print(file_num, idx)
-    fig, ax = plt.subplots(figsize=(10,5))
+    fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(file[1], file[0])
     plt.axhline(file[0][idx], color="r")
     ax.grid()
@@ -201,9 +202,9 @@ def plot_for_offset(file_num):
     ax.set_xlim(-1, 1)
 
     # Used to return the plot as an image rray
-    fig.canvas.draw()       # draw the canvas, cache the renderer
+    fig.canvas.draw()  # draw the canvas, cache the renderer
     image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-    image  = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
     return image
 
@@ -215,20 +216,21 @@ def circumfrance(file):
         y_1 = file[1][i]
         x_2 = file[0][i + 1]
         y_2 = file[1][i + 1]
-        length += ((x_2 - x_1) ** 2 + (y_2 - y_1) ** 2)**0.5
+        length += ((x_2 - x_1) ** 2 + (y_2 - y_1) ** 2) ** 0.5
     return length
 
 
 def redefine_index(arrays, index):
     arr_length = len(arrays[0])
     new_arrays = [np.zeros(arr_length), np.zeros(arr_length)]
-    for i in range(arr_length-1):
+    for i in range(arr_length - 1):
         prime_index = index + i
         new_arrays[0][i] = arrays[0][prime_index]
         new_arrays[1][i] = arrays[1][prime_index]
-        if index+i == arr_length-1:
+        if index + i == arr_length - 1:
             index = -i
     return new_arrays
+
 
 def circ_array(arrays):
     arr_length = len(arrays[0])
@@ -239,23 +241,24 @@ def circ_array(arrays):
         y_1 = arrays[1][i]
         x_2 = arrays[0][i + 1]
         y_2 = arrays[1][i + 1]
-        length += ((x_2 - x_1) ** 2 + (y_2 - y_1) ** 2)**0.5
-        new_array[i+1] = length
+        length += ((x_2 - x_1) ** 2 + (y_2 - y_1) ** 2) ** 0.5
+        new_array[i + 1] = length
     return new_array
 
 
 def border_data(point_num, simulation_num, file_num):
     # data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/*")
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_"+ str(simulation_num) + "/data_" + str(file_num) + ".npy")
+    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_" + str(simulation_num) + "/data_" + str(
+        file_num) + ".npy")
     final_array = [np.zeros(point_num), np.zeros(point_num)]
     idx = find_zero(file[1], file[0])
     circ = circumfrance(file)
-    length = circ/point_num
+    length = circ / point_num
     data = redefine_index(file, idx)
     # data[1][0] = 0
     circ_data = circ_array(data)
     for i in range(point_num):
-        idx = (np.abs(circ_data - length*i)).argmin()
+        idx = (np.abs(circ_data - length * i)).argmin()
         final_array[0][i] = data[0][idx]
         final_array[1][i] = data[1][idx]
     return final_array
@@ -268,7 +271,7 @@ def save_border_data(point_num, simulation):
         os.mkdir("training_data/Simulation_{}_points_{}/".format(simulation, point_num))
     except OSError:
         print("Folder already exists!")
-    pbar = tqdm(total=folder_length-3)
+    pbar = tqdm(total=folder_length - 3)
     for i in range(3, folder_length):
         pbar.update()
         final_data = border_data(point_num, simulation, i)

@@ -5,6 +5,10 @@ from tensorflow.keras import layers, models, initializers, activations, losses, 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
+import models
+from datetime import datetime
+
+
 
 def inception_cell(model, activation, axis, kernal_size):
     shape = model.output_shape
@@ -35,11 +39,13 @@ def inception_cell(model, activation, axis, kernal_size):
     model.add(Model(input_tower, merged))
     return model
 
+
 def model_1(activation, optimizer, frames=4, size=100, kernal_size=32):
     initializer = initializers.HeNormal()
     model = models.Sequential()
-    model.add(layers.Conv2D(kernal_size, (frames, 3), kernel_initializer=initializer, activation=activation, input_shape=(frames, size, 2)))
-    model.add(layers.Reshape((size-2, kernal_size)))
+    model.add(layers.Conv2D(kernal_size, (frames, 3), kernel_initializer=initializer, activation=activation,
+                            input_shape=(frames, size, 2)))
+    model.add(layers.Reshape((size - 2, kernal_size)))
     model.add(layers.Conv1D(kernal_size, 3, activation=activation, kernel_initializer=initializer))
     model = inception_cell(model, activation, 2, 32)
     model.add(layers.MaxPool1D(3))
@@ -64,6 +70,7 @@ def model_1(activation, optimizer, frames=4, size=100, kernal_size=32):
     model.compile(optimizer=optimizer, loss=losses.MeanSquaredError(), metrics=[metrics.MeanSquaredError(name="MSE")])
     return model
 
+
 def model_2(activation, optimizer, frames=4, size=100, kernal_size=32):
     initializer = initializers.HeNormal()
     model = models.Sequential()
@@ -86,7 +93,8 @@ def model_2(activation, optimizer, frames=4, size=100, kernal_size=32):
     model.summary(print_fn=lambda x: stringlist.append(x))
     print(model.summary())
     short_model_summary = "\n".join(stringlist)
-    model.compile(optimizer=optimizer, loss=losses.MeanSquaredLogarithmicError(), metrics=[metrics.MeanSquaredError(name="MSE")])
+    model.compile(optimizer=optimizer, loss=losses.MeanSquaredLogarithmicError(),
+                  metrics=[metrics.MeanSquaredError(name="MSE")])
     return model
 
 
@@ -117,7 +125,6 @@ def model_3(activation, optimizer, frames=4, size=100, kernal_size=32):
     return model
 
 
-
 def load_data(points, frames):
     training_data = []
     labels = []
@@ -127,7 +134,7 @@ def load_data(points, frames):
         data_names = glob.glob("training_data/Simulation_{}_points_{}/*".format(simulation, points))
         folder_length = len(data_names)
         data_array = []
-        for file_num in range(3, folder_length+1):
+        for file_num in range(3, folder_length + 1):
             data = np.load("training_data/Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
             data_array.append(data)
 
@@ -140,12 +147,12 @@ def load_data(points, frames):
                     xy.append(data[j][i])
                 xy_array.append(xy)
             xy_data.append(xy_array)
-        for i in range(folder_length-frames-2):
+        for i in range(folder_length - frames - 2):
             single = []
             for j in range(frames):
-                single.append(xy_data[i+j])
+                single.append(xy_data[i + j])
             training_data.append(single)
-            labels.append(xy_data[i+frames])
+            labels.append(xy_data[i + frames])
     pbar.close()
     return [np.array(training_data), np.array(labels)]
 
@@ -208,18 +215,23 @@ def prediction_gif(model, initial_data, gif_length):
 def main():
     print("Running Training")
     activation = activations.relu
-    optimizer = optimizers.Adam(learning_rate=0.0001)
+    optimizer = optimizers.Adam()
     frames = 1
     points = 100
     kernal_size = 32
     data = load_data(points, frames)
-    model = model_3(activation, optimizer, frames, points, kernal_size)
-    history = model.fit(data[0], data[1], epochs=30, shuffle=True)
-    prediction_gif(model, data[0][0], 10)
-
-
-
-
+    training_data = data[0]
+    labels = data[1]
+    labels = labels - training_data[:, -1, :, :]
+    max = np.max(labels, axis=2)
+    max = np.max(labels, axis=1)
+    model = models.resnet(activation, optimizer, 100, frames)
+    history = model[0].fit(data[0], data[1], epochs=4, shuffle=True)
+    today = datetime.today()
+    dt_string = today.strftime("%d_%m_%Y_%H_%M")
+    directory = "saved_models/" + dt_string
+    model[0].save(directory)
+    prediction_gif(model[0], data[0][0], 10)
 
 
 if __name__ == "__main__":
