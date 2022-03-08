@@ -211,6 +211,11 @@ def prediction_gif(model, initial_data, gif_length):
         image_array.append(image)
     make_gif(image_array, "pred_gif")
 
+def velocity_calculation(data):
+    velocity = []
+    for i in range(len(data)-1):
+        velocity.append(data[i]-data[i+1])
+
 
 def main():
     print("Running Training")
@@ -225,13 +230,21 @@ def main():
     labels = labels - training_data[:, -1, :, :]
     max = np.max(labels, axis=2)
     max = np.max(labels, axis=1)
+    t1 = training_data[28]
+    l1 = data[1][28]
+    a1 = l1-t1
+    t2 = training_data[29]
+    l2 = data[1][29]
+    a2 = l2 - t2
+    b1 = a1+a2
+    b2 = a1-a2
     model = models.resnet(activation, optimizer, 100, frames)
     history = model[0].fit(data[0], data[1], epochs=4, shuffle=True)
     today = datetime.today()
     dt_string = today.strftime("%d_%m_%Y_%H_%M")
     directory = "saved_models/" + dt_string
     model[0].save(directory)
-    prediction_gif(model[0], data[0][0], 10)
+    prediction_gif(model[0], data[0][400], 10)
 
 
 if __name__ == "__main__":

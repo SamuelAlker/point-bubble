@@ -3,6 +3,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
 
@@ -261,6 +262,12 @@ def border_data(point_num, simulation_num, file_num):
         idx = (np.abs(circ_data - length * i)).argmin()
         final_array[0][i] = data[0][idx]
         final_array[1][i] = data[1][idx]
+
+    if final_array[1][0]-final_array[1][1]>0:
+        final_array = np.flip(final_array, axis=1)
+        final_array = np.insert(final_array, 0, final_array[:,-1], axis=1)
+        final_array = np.delete(final_array, -1, axis=1)
+
     return final_array
 
 
@@ -284,15 +291,16 @@ def make_gif(images, name):
 
 
 def main():
+    print("Running:")
     # convert_dat_files([0], 0.0001)
-    for i in range(1, 11):
-        save_border_data(1000, i)
+    # for i in range(1, 11):
+    #     save_border_data(1000, i)
     for i in range(1, 11):
         save_border_data(100, i)
 
-    # simulation = 0
-    # points = 100
-    # plot_gif(points, simulation)
+    simulation = 0
+    points = 100
+    plot_gif(points, simulation)
 
     # kwargs_write = {'fps': 0.2 , 'quantizer': 'nq'}
     # imageio.mimsave('./powers.gif', [plot_for_offset(i) for i in range(900, 970)], fps=0.2)
@@ -304,12 +312,16 @@ def plot_gif(points, simulation):
     data_names = glob.glob("training_data/Simulation_{}_points_{}/*".format(simulation, points))
     folder_length = len(data_names)
     image_array = []
+    pbar = tqdm(total=folder_length-3)
+    colors = cm.winter(np.linspace(0, 1, 100))
     for i in range(3, folder_length, 5):
         fig = plt.Figure(figsize=[5, 5], dpi=300)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
         data = np.load("training_data/Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
-        ax.scatter(data[1], data[0])
+        ax.scatter(data[1], data[0], color=colors)
+        ax.scatter(data[1][0], data[0][0], color='r')
+        ax.scatter(data[1][25], data[0][25], color='r')
         ax.axvline(0)
         ax.set_xlim([-1, 1])
         ax.set_ylim([-1, 1])
@@ -318,6 +330,8 @@ def plot_gif(points, simulation):
         image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
         image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
         image_array.append(image)
+        pbar.update()
+    pbar.close()
     make_gif(image_array, "scatter2")
 
 
