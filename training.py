@@ -1,7 +1,8 @@
 import numpy as np
 import glob
 from tqdm import tqdm
-from tensorflow.keras import layers, models, initializers, activations, losses, metrics, optimizers, Model
+from tensorflow.keras import layers, initializers, activations, losses, metrics, optimizers, Model
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
@@ -40,123 +41,6 @@ def inception_cell(model, activation, axis, kernal_size):
     return model
 
 
-def model_1(activation, optimizer, frames=4, size=100, kernal_size=32):
-    initializer = initializers.HeNormal()
-    model = models.Sequential()
-    model.add(layers.Conv2D(kernal_size, (frames, 3), kernel_initializer=initializer, activation=activation,
-                            input_shape=(frames, size, 2)))
-    model.add(layers.Reshape((size - 2, kernal_size)))
-    model.add(layers.Conv1D(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.Conv1DTranspose(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model.add(layers.UpSampling1D(3))
-    model.add(layers.Conv1DTranspose(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model.add(layers.UpSampling1D(3))
-    model.add(layers.Conv1DTranspose(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model.add(layers.Conv1DTranspose(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model.add(layers.Conv1DTranspose(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model.add(layers.Conv1D(2, 3, activation=activation, kernel_initializer=initializer))
-
-    stringlist = []
-    model.summary(print_fn=lambda x: stringlist.append(x))
-    print(model.summary())
-    short_model_summary = "\n".join(stringlist)
-    model.compile(optimizer=optimizer, loss=losses.MeanSquaredError(), metrics=[metrics.MeanSquaredError(name="MSE")])
-    return model
-
-
-def model_2(activation, optimizer, frames=4, size=100, kernal_size=32):
-    initializer = initializers.HeNormal()
-    model = models.Sequential()
-    model.add(layers.Conv2D(kernal_size, (frames, 3), kernel_initializer=initializer, activation=activation,
-                            input_shape=(frames, size, 2)))
-    model.add(layers.Reshape((size - 2, kernal_size)))
-    model.add(layers.Conv1D(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.Flatten())
-    model.add(layers.Dense(400, activation=activation))
-    model.add(layers.Dense(200, activation=activation))
-    model.add(layers.Reshape((100, 2)))
-    stringlist = []
-    model.summary(print_fn=lambda x: stringlist.append(x))
-    print(model.summary())
-    short_model_summary = "\n".join(stringlist)
-    model.compile(optimizer=optimizer, loss=losses.MeanSquaredLogarithmicError(),
-                  metrics=[metrics.MeanSquaredError(name="MSE")])
-    return model
-
-
-def model_3(activation, optimizer, frames=4, size=100, kernal_size=32):
-    initializer = initializers.HeNormal()
-    model = models.Sequential()
-    model.add(layers.Conv2D(kernal_size, (frames, 3), kernel_initializer=initializer, activation=activation,
-                            input_shape=(frames, size, 2)))
-    model.add(layers.Reshape((size - 2, kernal_size)))
-    model.add(layers.Conv1D(kernal_size, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.MaxPool1D(3))
-    model.add(layers.Conv1D(128, 3, activation=activation, kernel_initializer=initializer))
-    model = inception_cell(model, activation, 2, 32)
-    model.add(layers.Flatten())
-    model.add(layers.Dense(20, activation=activation))
-    model.add(layers.Dense(20, activation=activation))
-    model.add(layers.Dense(200, activation=activations.linear))
-    model.add(layers.Reshape((100, 2)))
-    stringlist = []
-    model.summary(print_fn=lambda x: stringlist.append(x))
-    print(model.summary())
-    short_model_summary = "\n".join(stringlist)
-    model.compile(optimizer=optimizer, loss=losses.MeanSquaredError(), metrics=[metrics.MeanSquaredError(name="MSE")])
-    return model
-
-
-def load_data(points, frames):
-    training_data = []
-    labels = []
-    pbar = tqdm(total=11)
-    for simulation in range(11):
-        pbar.update()
-        data_names = glob.glob("training_data/Simulation_{}_points_{}/*".format(simulation, points))
-        folder_length = len(data_names)
-        data_array = []
-        for file_num in range(3, folder_length + 1):
-            data = np.load("training_data/Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
-            data_array.append(data)
-
-        xy_data = []
-        for data in data_array:
-            xy_array = []
-            for i in range(points):
-                xy = []
-                for j in range(2):
-                    xy.append(data[j][i])
-                xy_array.append(xy)
-            xy_data.append(xy_array)
-        for i in range(folder_length - frames - 2):
-            single = []
-            for j in range(frames):
-                single.append(xy_data[i + j])
-            training_data.append(single)
-            labels.append(xy_data[i + frames])
-    pbar.close()
-    return [np.array(training_data), np.array(labels)]
-
-
 def make_gif(images, name):
     imageio.mimsave("{}.gif".format(name), images)
 
@@ -184,23 +68,25 @@ def plot_gif(points, simulation):
 
 def prediction_gif(model, initial_data, gif_length):
     prediction = initial_data
-    plt.scatter(*zip(*prediction[0]))
+    plt.scatter(*zip(*prediction[0, :, 0:2]))
     plt.Figure(figsize=[5, 5], dpi=300)
     plt.xlim([-1, 1])
     plt.ylim([-1, 1])
     plt.show()
     plt.clf()
-    prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 2))
+    prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 4))
     image_array = []
     for i in range(gif_length):
         fig = plt.Figure(figsize=[5, 5], dpi=300)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        prediction = model(prediction)
-        ax.scatter(*zip(*prediction[0]))
+        n_prediction = model(prediction)
+        prediction[0,:,:,2:] = n_prediction.numpy()
+        prediction[0, :, :, :2] = prediction[0, :, :, :2] + (n_prediction.numpy()/100)
+        ax.scatter(*zip(*prediction[0, 0, :, 0:2]))
 
         # ax.scatter(prediction[0])
-        prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 2))
+        # prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 2))
         ax.axvline(0)
         ax.set_xlim([-1, 1])
         ax.set_ylim([-1, 1])
@@ -211,40 +97,77 @@ def prediction_gif(model, initial_data, gif_length):
         image_array.append(image)
     make_gif(image_array, "pred_gif")
 
-def velocity_calculation(data):
-    velocity = []
-    for i in range(len(data)-1):
-        velocity.append(data[i]-data[i+1])
+def velocity_calculation(data, scaling, time_step):
+    data = np.array(data)
+    velocity = [data[time_step] - data[0]]
+    for i in range(1, len(data)-time_step):
+        velocity.append((data[i+time_step]-data[i])*scaling)
+    return np.array(velocity)
+
+
+def load_data(points, frames, time_step):
+    training_data = []
+    labels = []
+    pbar = tqdm(total=2)
+    for simulation in range(2):
+        pbar.update()
+        data_names = glob.glob("training_data/Simulation_{}_points_{}/*".format(simulation, points))
+        folder_length = len(data_names)
+        data_array = []
+        for file_num in range(3, folder_length + 1):
+            data = np.load("training_data/Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
+            data_array.append(data)
+        xy_data = []
+        for data in data_array:
+            xy_array = []
+            for i in range(points):
+                xy = []
+                for j in range(2):
+                    xy.append(data[j][i])
+                xy_array.append(xy)
+            xy_data.append(xy_array)
+        vel_data = velocity_calculation(xy_data, 100, time_step)
+        for i in range(0, len(xy_data) - frames*time_step - time_step):
+            single = []
+            for j in range(0, frames):
+                row = np.array(xy_data[i + j*time_step + time_step])
+                row = np.append(row, vel_data[i+j*time_step], axis=1)
+                single.append(row)
+                # single.append(vel_data[i + j])
+            training_data.append(single)
+            labels.append(vel_data[i + frames*time_step])
+    pbar.close()
+    return [np.array(training_data), np.array(labels)]
 
 
 def main():
     print("Running Training")
     activation = activations.relu
     optimizer = optimizers.Adam()
-    frames = 1
+    frames = 2
     points = 100
     kernal_size = 32
-    data = load_data(points, frames)
-    training_data = data[0]
-    labels = data[1]
-    labels = labels - training_data[:, -1, :, :]
-    max = np.max(labels, axis=2)
-    max = np.max(labels, axis=1)
-    t1 = training_data[28]
-    l1 = data[1][28]
-    a1 = l1-t1
-    t2 = training_data[29]
-    l2 = data[1][29]
-    a2 = l2 - t2
-    b1 = a1+a2
-    b2 = a1-a2
-    model = models.resnet(activation, optimizer, 100, frames)
-    history = model[0].fit(data[0], data[1], epochs=4, shuffle=True)
+
+    # a1 = np.array([[[1],[1],[1]], [[1],[1],[1]]])
+    # a2 = np.array([[[1], [1], [1]], [[1], [1], [1]]])
+
+    # datas = tf.data.Dataset.from_tensor_slices((a1, a2))
+
+    data = load_data(points, frames, 5)
+    data[0] = np.transpose(data[0], axes=(0, 2, 1, 3))
+    datas = tf.data.Dataset.from_tensor_slices((data[0], data[1])).batch(32)
+
+    # model = models.resnet(activation, optimizer, 100, frames)[0]
+    model = models.graph_network(frames, activation, 4, 4, 2)
+
+    history = model.fit(datas, epochs=5, shuffle=True)
+    # model = tf.keras.models.load_model("saved_models/10_03_2022_16_25")
+
     today = datetime.today()
-    dt_string = today.strftime("%d_%m_%Y_%H_%M")
-    directory = "saved_models/" + dt_string
-    model[0].save(directory)
-    prediction_gif(model[0], data[0][400], 10)
+    # dt_string = today.strftime("%d_%m_%Y_%H_%M")
+    # directory = "saved_models/" + dt_string
+    # model.save(directory)
+    # prediction_gif(model, data[0][400], 10)
 
 
 if __name__ == "__main__":
