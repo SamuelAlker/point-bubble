@@ -1,6 +1,8 @@
+import keras.engine.data_adapter
 from tensorflow.keras import layers, Model, losses, metrics, regularizers, activations, backend
 from keras.engine import data_adapter
 import tensorflow as tf
+
 
 
 def identity_block(x, filter, activation):
@@ -99,7 +101,7 @@ def residual_cell(x, activation, layer_size=2, size=10):
 
 def message_model(frames, input_number, output_number, activation, residual_cells=None):
     if residual_cells is None:
-        residual_cells = [[2, 5], [2, 5]]
+        residual_cells = [[2, 10], [2, 10], [2, 10]]
     x_input = layers.Input(shape=(frames, input_number), name="message_input")
     x = layers.Flatten()(x_input)
     for cell_struct in residual_cells:
@@ -111,23 +113,23 @@ def message_model(frames, input_number, output_number, activation, residual_cell
 
 def interpretation_model(input_number, output_number, activation, residual_cells=None):
     if residual_cells is None:
-        residual_cells = [[2, 10], [2, 10]]
+        residual_cells = [[2, 20], [2, 20], [2, 20]]
     x_input = layers.Input(shape=input_number, name="interpretation_input")
     x = layers.Dense(30, activation=activation)(x_input)
     for cell_struct in residual_cells:
         x = residual_cell(x, activation, layer_size=cell_struct[0], size=cell_struct[1])
-    x = layers.Dense(output_number, activation=activation)(x)
+    x = layers.Dense(output_number, activation=activations.linear)(x)
     model = Model(x_input, x)
     return model
 
 
-def graph_network(frames, activation, m_input, m_output, i_output):
+def graph_network(frames, activation, m_input, m_output, i_output, optimiser):
     m_model = message_model(frames, m_input, m_output, activation)
-    m_model.compile()
-    i_model = interpretation_model(m_output, i_output, activation)
-    i_model.compile()
+    m_model.compile(run_eagerly=True)
+    i_model = interpretation_model(m_output+4, i_output, activation)
+    i_model.compile(run_eagerly=True)
     model = CustomModel(m_model, i_model, m_output)
-    model.compile()
+    model.compile(run_eagerly=True, optimizer=optimiser)
     return model
 
 
@@ -144,81 +146,81 @@ class CustomModel(Model):
         self.m_model_output = m_model_output
         self.i_model = i_model
 
+
+
+    # @tf.function
     def call(self, inputs, training=None, mask=None):
+        index = 0
         shape = inputs.shape
-        message_sum = self.m_model(inputs[:, 1])
-        for i in range(1, shape[1]):
-            print("call", i)
-            message_sum += self.m_model(inputs[:, i])
-        message_sum += inputs[:, 0, 0]
-        output = self.i_model(message_sum)
-        output = tf.expand_dims(output, axis=1)
-        for index in range(1, shape[1]):
-            print(index)
-            message_sum = self.m_model(inputs[:, 0])
-            message_sum += inputs[:, index, 0]
-            for i in range(1, shape[1]):
-                if i != index:
-                    message_sum += self.m_model(inputs[:, i])
-            output = tf.concat((output, tf.expand_dims(self.i_model(message_sum), axis=1)), axis=1)
-        return output
+        # batch_prediction = inputs[:, :, 0, :2]
+        bp = []
+        for i in tf.range(shape[0]):
+            messages = self.m_model(inputs[i], training=False)
+            col_index = 0
+            # bubble_prediction = single[:, 0, :2]
+            bup = []
+            for j in range(shape[1]):
+                message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
+                message_sum = backend.sum(message_sum, axis=0)
+                message_sum = tf.concat([message_sum, tf.cast(inputs[i, j, -1], tf.float32)], 0)
+                message_sum = tf.expand_dims(message_sum, 0)
+                # bubble_prediction[col_index] = self.i_model(message_sum, training=False)[0]
+                if tf.executing_eagerly():
+                    bup.append(self.i_model(message_sum, training=False)[0].numpy())
+                col_index += 1
+            # batch_prediction[index] = bubble_prediction
+            bp.append(bup)
+            index += 1
+        return bp
+
+    # @tf.function
+    def call_2(self, inputs):
+        index = 0
+        shape = tf.shape(inputs)
+        # batch_prediction = inputs[:, :, 0, :2]
+        bp = []
+        for i in range(shape[0]):
+            messages = self.m_model(inputs[i], training=False)
+            col_index = 0
+            # bubble_prediction = single[:, 0, :2]
+            bup = []
+            for j in range(shape[1]):
+                message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
+                message_sum = backend.sum(message_sum, axis=0)
+                message_sum = tf.concat([message_sum, tf.cast(inputs[i, j, -1], tf.float32)], 0)
+                message_sum = tf.expand_dims(message_sum, 0)
+                # bubble_prediction[col_index] = self.i_model(message_sum, training=False)[0]
+                if tf.executing_eagerly():
+                    bup.append(self.i_model(message_sum, training=False)[0].numpy())
+                col_index += 1
+            # batch_prediction[index] = bubble_prediction
+            bp.append(bup)
+            index += 1
+        return bp
 
     @tf.function
     def train_step(self, data):
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         shape = x.shape
         loss_tot = 0.
-
-        # def grad_loss(training_data, labels, ind):
-        #     with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-        #         tape.watch(self.i_model.trainable_variables)
-        #         # tape_1.watch(self.m_model.trainable_variables)
-        #         message = self.m_model(training_data[:, ind - 1], training=True)
-        #         message = tf.expand_dims(message, 0)
-        #         for i in range(0, shape[1] - 1):
-        #             if i != ind and i != ind - 1:
-        #                 message = tf.concat(
-        #                     [message, tf.expand_dims(self.m_model(training_data[:, i], training=True), 0)], 0)
-        #         message = tf.concat([message, tf.expand_dims(tf.cast(x[:, ind, 0], tf.float32), 0)], 0)
-        #         message = backend.sum(message, axis=0)
-        #         pred = self.i_model(message, training=True)
-        #         loss_ = losses.mean_squared_error(labels[:, j], pred)
-
         with tf.GradientTape(persistent=False, watch_accessed_variables=False) as tape_1:
             tape_1.watch(self.i_model.trainable_variables)
             tape_1.watch(self.m_model.trainable_variables)
             index = 0
             for single in x:
-                messages = self.m_model(single, training=True)
-                # message_sum = tf.expand_dims(message_sum, 0)
-                # for i in range(0, shape[1]-1):
-                #     if i != index and i != index-1:
-                #         message_sum = tf.concat([message_sum, tf.expand_dims(self.m_model(x[:, i], training=True), 0)], 0)
                 col_index = 0
+                messages = self.m_model(single, training=True)
                 for col in single:
-                    message_sum = tf.concat([messages,  tf.expand_dims(tf.cast(col[0], tf.float32), 0)], 0)
-                    message_sum = tf.expand_dims(backend.sum(message_sum, axis=0), 0)
+                    message_sum = tf.concat([messages[:col_index], messages[col_index:]],0)
+                    message_sum = backend.sum(message_sum, axis=0)
+                    message_sum = tf.concat([message_sum,  tf.cast(col[-1], tf.float32)], 0)
+                    message_sum = tf.expand_dims(message_sum, 0)
                     y_pred = self.i_model(message_sum, training=True)[0]
                     y_true = tf.cast(y[index, col_index], tf.float32)
                     loss_tot += losses.mean_squared_error(y_true, y_pred)
                     col_index += 1
                 index += 1
         self.optimizer.minimize(loss_tot, [self.i_model.trainable_variables, self.m_model.trainable_variables], tape=tape_1)
-
-        # self.optimizer.apply_gradients(zip(i_model_grads, i_model_trainable))
-        # self.optimizer.minimize(loss_1, self.i_model.trainable_variables, tape=tape_1)
-        # with tf.GradientTape(persistent=True) as tape_2:
-        #     shape = x.shape
-        #     message_sum = self.m_model(x[:, 0], training=True)
-        #     for i in range(1, shape[1]):
-        #         message_sum += self.m_model(x[:, i], training=True)
-        #     y_pred = self.i_model(message_sum, training=True)
-        #     loss_2 = losses.mean_squared_error(y, y_pred)
-        # self.optimizer.minimize(loss_1, self.i_model.trainable_variables, tape=tape)
-        # self.optimizer.minimize(loss_2, self.m_model.trainable_variables, tape=tape_2)
-        # y_pred = self(x, training=False)
-        # self.mse.update_state(y, y_pred)
-        # mse_result = self.mse.result()
         return {"MSE": loss_tot}
 
     def test_step(self, data):
