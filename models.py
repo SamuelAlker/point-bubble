@@ -1,4 +1,5 @@
 import keras.engine.data_adapter
+import numpy as np
 from tensorflow.keras import layers, Model, losses, metrics, regularizers, activations, backend
 from keras.engine import data_adapter
 import tensorflow as tf
@@ -146,57 +147,29 @@ class CustomModel(Model):
         self.m_model_output = m_model_output
         self.i_model = i_model
 
-
-
     # @tf.function
     def call(self, inputs, training=None, mask=None):
-        index = 0
-        shape = inputs.shape
-        # batch_prediction = inputs[:, :, 0, :2]
-        bp = []
-        for i in tf.range(shape[0]):
-            messages = self.m_model(inputs[i], training=False)
-            col_index = 0
-            # bubble_prediction = single[:, 0, :2]
-            bup = []
-            for j in range(shape[1]):
-                message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
-                message_sum = backend.sum(message_sum, axis=0)
-                message_sum = tf.concat([message_sum, tf.cast(inputs[i, j, -1], tf.float32)], 0)
-                message_sum = tf.expand_dims(message_sum, 0)
-                # bubble_prediction[col_index] = self.i_model(message_sum, training=False)[0]
-                if tf.executing_eagerly():
-                    bup.append(self.i_model(message_sum, training=False)[0].numpy())
-                col_index += 1
-            # batch_prediction[index] = bubble_prediction
-            bp.append(bup)
-            index += 1
-        return bp
-
-    # @tf.function
-    def call_2(self, inputs):
-        index = 0
-        shape = tf.shape(inputs)
-        # batch_prediction = inputs[:, :, 0, :2]
-        bp = []
-        for i in range(shape[0]):
-            messages = self.m_model(inputs[i], training=False)
-            col_index = 0
-            # bubble_prediction = single[:, 0, :2]
-            bup = []
-            for j in range(shape[1]):
-                message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
-                message_sum = backend.sum(message_sum, axis=0)
-                message_sum = tf.concat([message_sum, tf.cast(inputs[i, j, -1], tf.float32)], 0)
-                message_sum = tf.expand_dims(message_sum, 0)
-                # bubble_prediction[col_index] = self.i_model(message_sum, training=False)[0]
-                if tf.executing_eagerly():
-                    bup.append(self.i_model(message_sum, training=False)[0].numpy())
-                col_index += 1
-            # batch_prediction[index] = bubble_prediction
-            bp.append(bup)
-            index += 1
-        return bp
+        def numpy_func(x):
+            index = 0
+            bp = []
+            shape = x.shape
+            for i in range(shape[0]):
+                messages = self.m_model(x[i], training=training)
+                col_index = 0
+                bup = []
+                for j in tf.range(shape[1]):
+                    message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
+                    message_sum = backend.sum(message_sum, axis=0)
+                    message_sum = tf.concat([message_sum, tf.cast(x[i, j, -1], tf.float32)], 0)
+                    message_sum = tf.expand_dims(message_sum, 0)
+                    if tf.executing_eagerly():
+                        bup.append(self.i_model(message_sum, training=training)[0].numpy())
+                    col_index += 1
+                bp.append(bup)
+                index += 1
+            bp = np.array(bp)
+            return bp
+        return tf.numpy_function(numpy_func, [inputs], tf.float32)
 
     @tf.function
     def train_step(self, data):
@@ -206,20 +179,24 @@ class CustomModel(Model):
         with tf.GradientTape(persistent=False, watch_accessed_variables=False) as tape_1:
             tape_1.watch(self.i_model.trainable_variables)
             tape_1.watch(self.m_model.trainable_variables)
-            index = 0
-            for single in x:
-                col_index = 0
-                messages = self.m_model(single, training=True)
-                for col in single:
-                    message_sum = tf.concat([messages[:col_index], messages[col_index:]],0)
-                    message_sum = backend.sum(message_sum, axis=0)
-                    message_sum = tf.concat([message_sum,  tf.cast(col[-1], tf.float32)], 0)
-                    message_sum = tf.expand_dims(message_sum, 0)
-                    y_pred = self.i_model(message_sum, training=True)[0]
-                    y_true = tf.cast(y[index, col_index], tf.float32)
-                    loss_tot += losses.mean_squared_error(y_true, y_pred)
-                    col_index += 1
-                index += 1
+
+            y_pred = self(x)
+            loss_tot = losses.mean_squared_error(y, y_pred)
+
+            # index = 0
+            # for single in x:
+            #     col_index = 0
+            #     messages = self.m_model(single, training=True)
+            #     for col in single:
+            #         message_sum = tf.concat([messages[:col_index], messages[col_index:]], 0)
+            #         message_sum = backend.sum(message_sum, axis=0)
+            #         message_sum = tf.concat([message_sum,  tf.cast(col[-1], tf.float32)], 0)
+            #         message_sum = tf.expand_dims(message_sum, 0)
+            #         y_pred = self.i_model(message_sum, training=True)[0]
+            #         y_true = tf.cast(y[index, col_index], tf.float32)
+            #         loss_tot += losses.mean_squared_error(y_true, y_pred)
+            #         col_index += 1
+            #     index += 1
         self.optimizer.minimize(loss_tot, [self.i_model.trainable_variables, self.m_model.trainable_variables], tape=tape_1)
         return {"MSE": loss_tot}
 

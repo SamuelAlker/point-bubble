@@ -77,11 +77,11 @@ def prediction_gif(model, initial_data, gif_length):
     # plt.clf()
     # prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 4))
     image_array = []
-    for i in range(gif_length):
+    for f in range(gif_length):
         fig = plt.Figure(figsize=[5, 5], dpi=300)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        pred = model.call_2(prediction).numpy()
+        pred = model(prediction).numpy()
         data_adjusted = position_transform([prediction[0, :, -1, 0], prediction[0, :, -1, 1]], [pred[0, :, 0], pred[0, :, 1]], 100)
 
         for i in range(len(prediction[0])):
@@ -166,7 +166,7 @@ def main():
 
     today = datetime.today()
     dt_string = today.strftime("%d_%m_%Y_%H_%M")
-    directory = "saved_models/" + dt_string
+    directory = "saved_weights/" + dt_string
 
     # datas = tf.data.Dataset.from_tensor_slices((a1, a2))
 
@@ -179,16 +179,20 @@ def main():
     model = models.graph_network(frames, activation, 4, 4, 2, optimizer)
     test_data = np.array([data[0][10]])
 
+    train = 1
+    if train:
+        history = model.fit(datas, epochs=5)
+        tf.config.run_functions_eagerly(True)
+        pred = model(test_data)
+        model.save_weights(directory+'.h5')
+    else:
+        list_of_files = glob.glob('saved_weights/*')
+        latest_file = max(list_of_files, key=os.path.getctime)
+        print(latest_file)
+        model = models.graph_network(frames, activation, 4, 4, 2, optimizer)
+        pred = model(test_data)
+        model.load_weights(latest_file)
 
-    history = model.fit(datas, epochs=1)
-    tf.config.run_functions_eagerly(True)
-    pred = model(test_data)
-    model.save(directory)
-
-    # list_of_files = glob.glob('saved_models/*')
-    # latest_file = max(list_of_files, key=os.path.getctime)
-    # print(latest_file)
-    # model = tf.keras.models.load_model(latest_file)
 
     x = data[0][10, :, 1, 0]
     y = data[0][10, :, 1, 1]
@@ -198,12 +202,14 @@ def main():
     data_adjusted = position_transform([x, y], [dx, dy], scaling)
     plt.scatter(data_adjusted[0], data_adjusted[1])
     plt.show()
-    pred = model.call_2(test_data).numpy()
+    pred = model(test_data).numpy()
     data_adjusted = position_transform([x, y], [pred[0, :, 0], pred[0, :, 1]], scaling)
     plt.scatter(x, y, color='r')
     plt.scatter(data_adjusted[0], data_adjusted[1])
     plt.show()
-    plt.scatter(pred[0, :, 0], pred[0, :, 1])
+    dx_p = pred[0, :, 0]
+    dy_p = pred[0, :, 1]
+    plt.scatter(dx_p, dy_p)
     plt.scatter(dx, dy, color='r')
     plt.show()
 
