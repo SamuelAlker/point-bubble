@@ -177,6 +177,18 @@ def find_zero(x_array, y_array):
     return best_idx
 
 
+def find_zero_2(x_array, y_array):
+    y_copy = np.array(y_array)
+    average_y = np.average(y_array)
+    best_idx = np.abs(y_copy-average_y).argmin()
+    for i in range(20):
+        idx = np.abs(y_copy-average_y).argmin()
+        if x_array[idx] < x_array[best_idx]:
+            best_idx = idx
+        y_copy[idx] = 999
+    return best_idx
+
+
 def positive_values(x_array, y_array):
     for i in range(len(y_array)):
         if y_array[i] < 0:
@@ -188,7 +200,7 @@ def plot_for_offset(file_num):
     # Data for plotting
     file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_" + str(file_num) + ".npy")
 
-    idx = find_zero(file[1], file[0])
+    idx = find_zero_2(file[1], file[0])
     print(file_num, idx)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(file[1], file[0])
@@ -252,7 +264,7 @@ def border_data(point_num, simulation_num, file_num):
     file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_" + str(simulation_num) + "/data_" + str(
         file_num) + ".npy")
     final_array = [np.zeros(point_num), np.zeros(point_num)]
-    idx = find_zero(file[1], file[0])
+    idx = find_zero_2(file[1], file[0])
     circ = circumfrance(file)
     length = circ / point_num
     data = redefine_index(file, idx)
@@ -263,7 +275,7 @@ def border_data(point_num, simulation_num, file_num):
         final_array[0][i] = data[0][idx]
         final_array[1][i] = data[1][idx]
 
-    if final_array[1][0]-final_array[1][1]>0:
+    if final_array[0][0]-final_array[0][1]>0:
         final_array = np.flip(final_array, axis=1)
         final_array = np.insert(final_array, 0, final_array[:,-1], axis=1)
         final_array = np.delete(final_array, -1, axis=1)
@@ -275,14 +287,14 @@ def save_border_data(point_num, simulation):
     data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
-        os.mkdir("training_data/Simulation_{}_points_{}/".format(simulation, point_num))
+        os.mkdir("training_data/xmin_Simulation_{}_points_{}/".format(simulation, point_num))
     except OSError:
         print("Folder already exists!")
     pbar = tqdm(total=folder_length - 3)
     for i in range(3, folder_length):
         pbar.update()
         final_data = border_data(point_num, simulation, i)
-        np.save("training_data/Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
+        np.save("training_data/xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
     pbar.close()
 
 
@@ -295,12 +307,10 @@ def main():
     # convert_dat_files([0], 0.0001)
     # for i in range(1, 11):
     #     save_border_data(1000, i)
-    for i in range(1, 11):
-        save_border_data(100, i)
-
-    simulation = 0
     points = 100
-    plot_gif(points, simulation)
+    for simulation in range(0, 10):
+        save_border_data(points, simulation)
+        plot_gif(points, simulation)
 
     # kwargs_write = {'fps': 0.2 , 'quantizer': 'nq'}
     # imageio.mimsave('./powers.gif', [plot_for_offset(i) for i in range(900, 970)], fps=0.2)
@@ -309,7 +319,7 @@ def main():
 
 
 def plot_gif(points, simulation):
-    data_names = glob.glob("training_data/Simulation_{}_points_{}/*".format(simulation, points))
+    data_names = glob.glob("training_data/xmin_Simulation_{}_points_{}/*".format(simulation, points))
     folder_length = len(data_names)
     image_array = []
     pbar = tqdm(total=folder_length-3)
@@ -318,11 +328,12 @@ def plot_gif(points, simulation):
         fig = plt.Figure(figsize=[5, 5], dpi=300)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        data = np.load("training_data/Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
+        data = np.load("training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
         ax.scatter(data[1], data[0], color=colors)
         ax.scatter(data[1][0], data[0][0], color='r')
         ax.scatter(data[1][25], data[0][25], color='r')
         ax.axvline(0)
+        ax.axhline(0)
         ax.set_xlim([-1, 1])
         ax.set_ylim([-1, 1])
         ax.axis('off')
@@ -332,7 +343,7 @@ def plot_gif(points, simulation):
         image_array.append(image)
         pbar.update()
     pbar.close()
-    make_gif(image_array, "scatter2")
+    make_gif(image_array, "scatter"+str(simulation))
 
 
 def plot_circ_graphs():
