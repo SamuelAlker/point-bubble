@@ -304,11 +304,11 @@ def make_gif(images, name):
 
 def main():
     print("Running:")
-    # convert_dat_files([0], 0.0001)
+    convert_dat_files([0], 0.0001)
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(0, 10):
+    for simulation in range(10, 20):
         save_border_data(points, simulation)
         plot_gif(points, simulation)
 

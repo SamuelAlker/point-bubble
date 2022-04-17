@@ -8,6 +8,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
+
+import dense_model
 import models
 from datetime import datetime
 import os
@@ -79,7 +81,7 @@ def prediction_gif(model, initial_data, gif_length):
     # prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 4))
     image_array = []
     for f in range(gif_length):
-        fig = plt.Figure(figsize=[5, 5], dpi=300)
+        fig = plt.Figure(figsize=[3, 3], dpi=200)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
         pred = model.call_2(prediction).numpy()
@@ -92,15 +94,16 @@ def prediction_gif(model, initial_data, gif_length):
             prediction[0, i, 1, 2] = pred[0, i, 0]
             prediction[0, i, 1, 3] = pred[0, i, 1]
 
-        prediction = distance_conversion([prediction, [0]], pbar_toggle=False)
-        ax.scatter(data_adjusted[0], data_adjusted[1])
+        # prediction = distance_conversion([prediction, [0]], pbar_toggle=False)
         x = initial_data[0][15+f*5, :, -1, 0]
         y = initial_data[0][15+f*5, :, -1, 1]
-        ax.scatter(x, y)
+        ax.scatter(y, x, s=0.5)
+        ax.scatter(data_adjusted[1], data_adjusted[0], s=0.5)
 
         # ax.scatter(prediction[0])
         # prediction = np.reshape(prediction, newshape=(1, 1, np.shape(prediction)[1], 2))
         ax.axvline(0)
+        ax.axhline(0)
         ax.set_xlim([-1, 1])
         ax.set_ylim([-1, 1])
         ax.axis('off')
@@ -203,9 +206,148 @@ def distance_conversion(data, pbar_toggle=True, save_files=False):
     return new_data
 
 
+def hyperparameter_explore(activation, optimizer, lr, datas, epochs, test_epochs, check_iteration):
+    # tf.config.run_functions_eagerly(True)
+    today = datetime.today()
+    directory = today.strftime("%d_%m_%Y_%H_%M")
+
+    input_nodes = 200
+    input_nodes_adjust = 20
+
+    nodes = 50
+    nodes_adjust = 10
+
+    layer_number = 2
+    layer_number_adjust = 1
+
+    cells = 6
+    cells_adjust = 1
+
+    save_model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
+    print("Initial Save Model Training")
+    history = save_model.fit(datas, epochs=test_epochs, callbacks=[lr], verbose=2)
+    previous_loss = history.history["loss"][-1]
+    iteration = 1
+    input_loss = 999
+    nodes_loss = 999
+    layers_loss = 999
+    cells_loss = 999
+    while True:
+        pbar = tqdm(total=4)
+        model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes+input_nodes_adjust, nodes, layer_number, cells)
+        history_input_nodes = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+        if input_nodes > input_nodes_adjust:
+            model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes-input_nodes_adjust, nodes, layer_number, cells)
+            history_input_nodes_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+            if history_input_nodes.history["loss"][-1] < history_input_nodes_negative.history["loss"][-1]:
+                input_nodes = input_nodes + input_nodes_adjust
+                input_loss = history_input_nodes.history["loss"][-1]
+            else:
+                input_nodes = input_nodes - input_nodes_adjust
+                input_loss = history_input_nodes_negative.history["loss"][-1]
+        else:
+            if history_input_nodes.history["loss"][-1] < input_loss:
+                input_nodes = input_nodes + input_nodes_adjust
+                input_loss = history_input_nodes.history["loss"][-1]
+
+
+        pbar.update(1)
+        model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
+        history_nodes = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+        if nodes > nodes_adjust:
+            model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
+            history_nodes_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+            if history_nodes.history["loss"][-1] < history_nodes_negative.history["loss"][-1]:
+                nodes = nodes + nodes_adjust
+                nodes_loss = history_nodes.history["loss"][-1]
+            else:
+                nodes = nodes - nodes_adjust
+                nodes_loss = history_nodes_negative.history["loss"][-1]
+        else:
+            if history_nodes.history["loss"][-1] < nodes_loss:
+                nodes = nodes + nodes_adjust
+                nodes_loss = history_nodes.history["loss"][-1]
+
+
+        pbar.update(1)
+        model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust, cells)
+        history_layer = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+        if layer_number > layer_number_adjust:
+            model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust, cells)
+            history_layer_number_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+            if history_layer.history["loss"][-1] < history_layer_number_negative.history["loss"][-1]:
+                layer_number = layer_number + layer_number_adjust
+                layers_loss = history_layer.history["loss"][-1]
+            else:
+                layer_number = layer_number - layer_number_adjust
+                layers_loss = history_layer_number_negative.history["loss"][-1]
+        else:
+            if history_layer.history["loss"][-1] < layers_loss:
+                layer_number = layer_number + layer_number_adjust
+                layers_loss = history_layer.history["loss"][-1]
+
+        pbar.update(1)
+        model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
+        history_cells = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+        if cells > cells_adjust:
+            model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
+            history_cells_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
+            if history_cells.history["loss"][-1] < history_cells_negative.history["loss"][-1]:
+                cells = cells + cells_adjust
+                cells_loss = history_cells.history["loss"][-1]
+            else:
+                cells = cells + cells_adjust
+                cells_loss = history_cells_negative.history["loss"][-1]
+        else:
+            if history_cells.history["loss"][-1] < cells_loss:
+                cells = cells + cells_adjust
+                cells_loss = history_cells.history["loss"][-1]
+        pbar.update(1)
+        pbar.close()
+        input_node_string = "Input Node Number: " + str(input_nodes) + ", Loss = " + str(input_loss)
+        node_string = "Node Number: " + str(nodes) + ", Loss = " + str(nodes_loss)
+        layer_string = "Layer Number: " + str(layer_number) + ", Loss = " + str(layers_loss)
+        cell_string = "Cell Number: " + str(cells) + ", Loss = " + str(cells_loss)
+        print("#---------------------------#")
+        print("Iteration", iteration)
+        print(input_node_string)
+        print(node_string)
+        print(layer_string)
+        print(cell_string)
+
+        iteration += 1
+        if iteration % check_iteration == 0:
+            print("Testing Best Model")
+            model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
+            history = model.fit(datas, epochs=test_epochs, callbacks=[lr], verbose=2)
+            loss = history.history["loss"][-1]
+            if loss < previous_loss:
+                previous_loss = loss
+                save_model = model
+            else:
+                break
+    try:
+        os.mkdir("Hyperparameter_Explore")
+    except OSError:
+        print("Hyperparameter_Explore folder already exists!")
+    os.mkdir("Hyperparameter_Explore/{}".format(directory))
+    training_file = open("Hyperparameter_Explore/{}/loss_{}_parameters".format(directory, previous_loss), "w")
+    input_node_string = "Input Node Number: " + str(input_nodes)
+    node_string = "Node Number: " + str(nodes)
+    layer_string = "Layer Number: " + str(layer_number)
+    cell_string = "Cell Number: " + str(cells)
+    training_file.write(input_node_string)
+    training_file.write(node_string)
+    training_file.write(layer_string)
+    training_file.write(cell_string)
+    training_file.close()
+    save_model.save_weights('weights.h5')
+    return save_model
+
+
 def main():
     print("Running Training")
-    activation = activations.tanh
+    activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
     frames = 2
     points = 100
@@ -221,14 +363,83 @@ def main():
 
     # datas = tf.data.Dataset.from_tensor_slices((a1, a2))
 
+    data = creating_data_graph(frames, points, scaling)
+
+    # xx = data[1][:, 0, 0]
+    # print(np.argmax(xx))
+    # yy = data[1][:, 0, 1]
+    # plt.plot(xx)
+    # plt.show()
+    # plt.plot(yy)
+    # plt.show()
+
+    datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
+
+    # model = models.graph_network(frames, activation, 5, 10, 2, optimizer)
+    model = dense_model.dense_network(100, 2, 4, activation, optimizer, 200, 50, 2, 10)
+    test_data = np.array([data[0][10]])
+
+    def step_decay(epoch):
+        int_rate = 0.001
+        return np.exp(np.log(0.1)/100)**epoch * int_rate
+
+    lr = callbacks.LearningRateScheduler(step_decay)
+    parameter_epochs = 5
+    testing_epochs = 20
+    iteration_check = 5
+    model = hyperparameter_explore(activation, optimizer, lr, datas, parameter_epochs, testing_epochs, iteration_check)
+
+    # lr = callbacks.ReduceLROnPlateau(monitor="loss", factor=0.2, patience=5, min_delta=0.001)
 
 
+    '''
+    train = 1
+    if train:
+        history = model.fit(datas, epochs=10, callbacks=[lr])
+        previous_loss = history.history["loss"][-1]
+        tf.config.run_functions_eagerly(True)
+        pred = model(test_data)
+        model.save_weights(directory + '.h5')
+    else:
+        list_of_files = glob.glob('saved_weights/*')
+        latest_file = max(list_of_files, key=os.path.getctime)
+        print(latest_file)
+        # model = models.graph_network(frames, activation, 5, 10, 2, optimizer)
+        pred = model(test_data)
+        model.load_weights(latest_file)
+    #'''
+
+    # x = data[0][10, :, -1, 0]
+    # y = data[0][10, :, -1, 1]
+    dx = data[1][10, :, 0]
+    dy = data[1][10, :, 1]
+    # plt.scatter(x, y, color='r')
+    # data_adjusted = position_transform([x, y], [dx, dy], scaling)
+    # plt.scatter(data_adjusted[0], data_adjusted[1], color='g')
+    # plt.show()
+    pred = model.call_2(test_data).numpy()
+    # data_adjusted = position_transform([x, y], [pred[0, :, 0], pred[0, :, 1]], scaling)
+    # plt.scatter(x, y, color='r')
+    # plt.scatter(data_adjusted[0], data_adjusted[1])
+    # plt.xlim([-1, 1])
+    # plt.ylim([-1, 1])
+    # plt.show()
+    dx_p = pred[0, :, 0]
+    dy_p = pred[0, :, 1]
+    plt.scatter(dx_p, dy_p)
+    plt.scatter(dx, dy, color='r')
+    plt.show()
+
+    prediction_gif(model, data, 200)
+
+
+def creating_data_graph(frames, points, scaling):
     save_data = 1
     if save_data:
         data = load_data(points, frames, 5, scaling)
         data = [data[0][:], data[1][:]]
         data[0] = np.transpose(data[0], axes=(0, 2, 1, 3))
-        data[0] = distance_conversion(data, save_files=False)
+        # data[0] = distance_conversion(data, save_files=False)
     else:
         training_names = glob.glob("Training_Strings/*")
         label_names = glob.glob("Label_Strings/*")
@@ -248,64 +459,7 @@ def main():
             labels_file.close()
         pbar.close()
         data = [np.array(training_array), np.array(labels_array)]
-
-
-    xx = data[1][:, 0, 0]
-    print(np.argmax(xx))
-    yy = data[1][:, 0, 1]
-    plt.plot(xx)
-    plt.show()
-    plt.plot(yy)
-    plt.show()
-
-    datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(1)
-
-    # model = models.resnet(activation, optimizer, 100, frames)[0]
-
-    model = models.graph_network(frames, activation, 5, 10, 2, optimizer)
-    test_data = np.array([data[0][10]])
-
-    def step_decay(epoch):
-        int_rate = 0.001
-        return np.exp(np.log(0.1)/20)**epoch * int_rate
-
-    train = 1
-    lr = callbacks.LearningRateScheduler(step_decay)
-    if train:
-        history = model.fit(datas, epochs=5, callbacks=[lr])
-        tf.config.run_functions_eagerly(True)
-        pred = model(test_data)
-        model.save_weights(directory + '.h5')
-    else:
-        list_of_files = glob.glob('saved_weights/*')
-        latest_file = max(list_of_files, key=os.path.getctime)
-        print(latest_file)
-        model = models.graph_network(frames, activation, 5, 10, 2, optimizer)
-        pred = model(test_data)
-        model.load_weights(latest_file)
-
-    x = data[0][10, :, -1, 0]
-    y = data[0][10, :, -1, 1]
-    dx = data[1][10, :, 0]
-    dy = data[1][10, :, 1]
-    plt.scatter(x, y, color='r')
-    data_adjusted = position_transform([x, y], [dx, dy], scaling)
-    plt.scatter(data_adjusted[0], data_adjusted[1], color='g')
-    # plt.show()
-    pred = model.call_2(test_data).numpy()
-    data_adjusted = position_transform([x, y], [pred[0, :, 0], pred[0, :, 1]], scaling)
-    # plt.scatter(x, y, color='r')
-    plt.scatter(data_adjusted[0], data_adjusted[1])
-    plt.xlim([-1, 1])
-    plt.ylim([-1, 1])
-    plt.show()
-    dx_p = pred[0, :, 0]
-    dy_p = pred[0, :, 1]
-    plt.scatter(dx_p, dy_p)
-    plt.scatter(dx, dy, color='r')
-    plt.show()
-
-    prediction_gif(model, data, 20)
+    return data
 
 
 if __name__ == "__main__":
