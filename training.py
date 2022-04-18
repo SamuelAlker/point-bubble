@@ -1,9 +1,11 @@
 import ast
-
+import os
+import gc
+os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 import numpy as np
 import glob
 from tqdm import tqdm
-from tensorflow.keras import layers, initializers, activations, losses, metrics, optimizers, Model, callbacks
+from tensorflow.keras import layers, initializers, activations, losses, metrics, optimizers, Model, callbacks, backend
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -12,37 +14,6 @@ import imageio
 import dense_model
 import models
 from datetime import datetime
-import os
-
-
-def inception_cell(model, activation, axis, kernal_size):
-    shape = model.output_shape
-    li = list(shape)
-    li.pop(0)
-    shape = tuple(li)
-    input_tower = layers.Input(shape=shape)
-
-    tower_1 = layers.Conv1D(kernal_size, 1, padding='same', activation=activation)(
-        input_tower)
-
-    tower_2 = layers.Conv1D(kernal_size, 1, padding='same', activation=activation)(
-        input_tower)
-    tower_2 = layers.Conv1D(kernal_size, 3, padding='same', activation=activation)(
-        tower_2)
-
-    tower_3 = layers.Conv1D(kernal_size, 1, padding='same', activation=activation)(
-        input_tower)
-    tower_3 = layers.Conv1D(kernal_size, 5, padding='same', activation=activation)(
-        tower_3)
-
-    # tower_4 = layers.MaxPooling2D((3, 3), strides=1)(input_tower)
-    tower_4 = layers.Conv1D(kernal_size, 3, padding='same', activation=activation)(
-        input_tower)
-
-    merged = layers.concatenate([tower_1, tower_2, tower_3, tower_4], axis=axis)
-
-    model.add(Model(input_tower, merged))
-    return model
 
 
 def make_gif(images, name):
@@ -205,8 +176,7 @@ def distance_conversion(data, pbar_toggle=True, save_files=False):
         pbar.close()
     return new_data
 
-
-def hyperparameter_explore(activation, optimizer, lr, datas, epochs, test_epochs, check_iteration):
+def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
     # tf.config.run_functions_eagerly(True)
     today = datetime.today()
     directory = today.strftime("%d_%m_%Y_%H_%M")
@@ -222,7 +192,10 @@ def hyperparameter_explore(activation, optimizer, lr, datas, epochs, test_epochs
 
     cells = 6
     cells_adjust = 1
-
+    
+    
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
     save_model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
     print("Initial Save Model Training")
     history = save_model.fit(datas, epochs=test_epochs, callbacks=[lr], verbose=2)
@@ -232,78 +205,134 @@ def hyperparameter_explore(activation, optimizer, lr, datas, epochs, test_epochs
     nodes_loss = 999
     layers_loss = 999
     cells_loss = 999
+    
     while True:
+        
+        input_placehold = 0
+        node_placehold = 0
+        layer_placehold = 0
+        cell_placehold = 0
+        
         pbar = tqdm(total=4)
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
         model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes+input_nodes_adjust, nodes, layer_number, cells)
+        
         history_input_nodes = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
         if input_nodes > input_nodes_adjust:
+            activation = activations.swish
+            optimizer = optimizers.Adam(learning_rate=0.001)
+
             model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes-input_nodes_adjust, nodes, layer_number, cells)
             history_input_nodes_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
             if history_input_nodes.history["loss"][-1] < history_input_nodes_negative.history["loss"][-1]:
-                input_nodes = input_nodes + input_nodes_adjust
+                input_placehold = input_nodes + input_nodes_adjust
                 input_loss = history_input_nodes.history["loss"][-1]
+                
             else:
-                input_nodes = input_nodes - input_nodes_adjust
+                input_placehold = input_nodes - input_nodes_adjust
                 input_loss = history_input_nodes_negative.history["loss"][-1]
         else:
             if history_input_nodes.history["loss"][-1] < input_loss:
-                input_nodes = input_nodes + input_nodes_adjust
+                input_placehold = input_nodes + input_nodes_adjust
                 input_loss = history_input_nodes.history["loss"][-1]
-
+                
 
         pbar.update(1)
+
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
         model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
         history_nodes = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
         if nodes > nodes_adjust:
+            activation = activations.swish
+
+            optimizer = optimizers.Adam(learning_rate=0.001)
             model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
             history_nodes_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
             if history_nodes.history["loss"][-1] < history_nodes_negative.history["loss"][-1]:
-                nodes = nodes + nodes_adjust
+                node_placehold = nodes + nodes_adjust
                 nodes_loss = history_nodes.history["loss"][-1]
             else:
-                nodes = nodes - nodes_adjust
+                node_placehold = nodes - nodes_adjust
                 nodes_loss = history_nodes_negative.history["loss"][-1]
         else:
             if history_nodes.history["loss"][-1] < nodes_loss:
-                nodes = nodes + nodes_adjust
+                node_placehold = nodes + nodes_adjust
                 nodes_loss = history_nodes.history["loss"][-1]
 
 
         pbar.update(1)
+
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
         model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust, cells)
         history_layer = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
         if layer_number > layer_number_adjust:
+            backend.clear_session()
+            gc.collect()
+
+            activation = activations.swish
+            optimizer = optimizers.Adam(learning_rate=0.001)
             model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust, cells)
             history_layer_number_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
             if history_layer.history["loss"][-1] < history_layer_number_negative.history["loss"][-1]:
-                layer_number = layer_number + layer_number_adjust
+                layer_placehold = layer_number + layer_number_adjust
                 layers_loss = history_layer.history["loss"][-1]
             else:
-                layer_number = layer_number - layer_number_adjust
+                layer_placehold = layer_number - layer_number_adjust
                 layers_loss = history_layer_number_negative.history["loss"][-1]
         else:
             if history_layer.history["loss"][-1] < layers_loss:
-                layer_number = layer_number + layer_number_adjust
+                layer_placehold = layer_number + layer_number_adjust
                 layers_loss = history_layer.history["loss"][-1]
 
         pbar.update(1)
+
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
         model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
+
         history_cells = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
         if cells > cells_adjust:
+
+            activation = activations.swish
+            optimizer = optimizers.Adam(learning_rate=0.001)
             model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
             history_cells_negative = model.fit(datas, epochs=epochs, callbacks=[lr], verbose=0)
             if history_cells.history["loss"][-1] < history_cells_negative.history["loss"][-1]:
-                cells = cells + cells_adjust
+                cell_placehold = cells + cells_adjust
                 cells_loss = history_cells.history["loss"][-1]
             else:
-                cells = cells + cells_adjust
+                cell_placehold = cells + cells_adjust
                 cells_loss = history_cells_negative.history["loss"][-1]
         else:
             if history_cells.history["loss"][-1] < cells_loss:
-                cells = cells + cells_adjust
+                cell_placehold = cells + cells_adjust
                 cells_loss = history_cells.history["loss"][-1]
         pbar.update(1)
         pbar.close()
+        min_loss = input_loss
+        reduce = 0
+        if nodes_loss < min_loss:
+            min_loss = nodes_loss
+            reduce = 1
+        if layers_loss < min_loss:
+            min_loss = layers_loss
+            reduce = 2
+        if cells_loss < min_loss:
+            reduce = 3
+        
+        if reduce == 0:
+            input_nodes = input_placehold
+        if reduce == 1:
+            nodes = node_placehold
+        if reduce == 2:
+            layer_number = layer_placehold
+        if reduce == 3:
+            cells = cell_placehold
+        
+        
         input_node_string = "Input Node Number: " + str(input_nodes) + ", Loss = " + str(input_loss)
         node_string = "Node Number: " + str(nodes) + ", Loss = " + str(nodes_loss)
         layer_string = "Layer Number: " + str(layer_number) + ", Loss = " + str(layers_loss)
@@ -318,6 +347,8 @@ def hyperparameter_explore(activation, optimizer, lr, datas, epochs, test_epochs
         iteration += 1
         if iteration % check_iteration == 0:
             print("Testing Best Model")
+            activation = activations.swish
+            optimizer = optimizers.Adam(learning_rate=0.001)
             model = dense_model.dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
             history = model.fit(datas, epochs=test_epochs, callbacks=[lr], verbose=2)
             loss = history.history["loss"][-1]
@@ -365,13 +396,13 @@ def main():
 
     data = creating_data_graph(frames, points, scaling)
 
-    # xx = data[1][:, 0, 0]
-    # print(np.argmax(xx))
-    # yy = data[1][:, 0, 1]
-    # plt.plot(xx)
-    # plt.show()
-    # plt.plot(yy)
-    # plt.show()
+    xx = data[1][:, 0, 0]
+    print(np.argmax(xx))
+    yy = data[1][:, 0, 1]
+    plt.plot(xx)
+    plt.show()
+    plt.plot(yy)
+    plt.show()
 
     datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
 
@@ -385,9 +416,9 @@ def main():
 
     lr = callbacks.LearningRateScheduler(step_decay)
     parameter_epochs = 5
-    testing_epochs = 20
+    testing_epochs = 10
     iteration_check = 5
-    model = hyperparameter_explore(activation, optimizer, lr, datas, parameter_epochs, testing_epochs, iteration_check)
+    model = hyperparameter_explore(lr, datas, parameter_epochs, testing_epochs, iteration_check)
 
     # lr = callbacks.ReduceLROnPlateau(monitor="loss", factor=0.2, patience=5, min_delta=0.001)
 
@@ -462,5 +493,4 @@ def creating_data_graph(frames, points, scaling):
     return data
 
 
-if __name__ == "__main__":
-    main()
+

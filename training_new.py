@@ -1,7 +1,8 @@
 import ast
 import os
 import gc
-os.environ["CUDA_VISIBLE_DEVICES"]="-1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+import subprocess
 import numpy as np
 import glob
 from tqdm import tqdm
@@ -12,6 +13,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
 from keras.engine import data_adapter
 from datetime import datetime
+import pickle
 
 
 def residual_cell(x, activation, layer_size=2, size=10):
@@ -26,6 +28,7 @@ def residual_cell(x, activation, layer_size=2, size=10):
 
 
 def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
+    tf.compat.v1.keras.backend.clear_session()
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
     # x = layers.Dense(nodes, activation=activation)(x)
@@ -39,10 +42,10 @@ def dense_network(input_number, frames, points, activation, optimiser, input_nod
     x = layers.Dense(200, activation=activations.linear)(x)
     x = layers.Reshape((100, 2))(x)
     model = Model(x_input, x)
-    #model.compile(optimizer=optimiser)
+    # model.compile(optimizer=optimiser)
     # print(model.summary())
-    #model = CustomModel(x_input, x)
-    model.compile(optimizer=optimiser, loss=losses.mean_squared_error)
+    # model = CustomModel(x_input, x)
+    model.compile(optimizer=optimiser, loss=losses.mean_squared_error, run_eagerly=False)
     return model
 
 
@@ -59,7 +62,7 @@ class CustomModel(Model):
         self.loss_tracker.update_state(loss_tot)
         # self.MAE_tracker.update_state(y, y_pred)
         loss = self.loss_tracker.result()
-        
+
         # MAE = self.MAE_tracker.result()
         return {"loss": loss, "loss_tot": loss_tot}
 
@@ -70,181 +73,78 @@ class CustomModel(Model):
         # self.mse.update_state(y, y_pred)
         # mse_result = self.mse.result()
         return {"MSE": 1}
-    
+
 
 def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
-    # tf.config.run_functions_eagerly(True)
+    tf.config.run_functions_eagerly(False)
     today = datetime.today()
     directory = today.strftime("%d_%m_%Y_%H_%M")
 
-    input_nodes = 30
-    input_nodes_adjust = 5
-    best_input_nodes = input_nodes
+    input_nodes = 100
+    input_nodes_adjust = 10
 
-    nodes = 30
+    nodes = 50
     nodes_adjust = 5
-    best_nodes = nodes
 
     layer_number = 2
     layer_number_adjust = 1
-    best_layer_number = layer_number
 
     cells = 4
     cells_adjust = 1
-    best_cells = cells
-    
-    backend.clear_session()
 
-    activation = activations.swish
-    optimizer = optimizers.Adam(learning_rate=0.001)
-    save_model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
-    print("Initial Save Model Training")
-    history = save_model.fit(datas[0], datas[1], epochs=test_epochs, callbacks=[lr], verbose=2, validation_split=0.01)
-    previous_loss = history.history["loss"][-1]
+    
+    previous_loss = 999
     iteration = 1
     input_loss = 999
     nodes_loss = 999
     layers_loss = 999
     cells_loss = 999
     
+    strOutputFile = os.path.join(os.getenv('TEMP'), "array.pkl")
+    pickle.dump(datas, open(strOutputFile, 'wb'))
+
     while True:
         input_placehold = 0
         node_placehold = 0
         layer_placehold = 0
         cell_placehold = 0
-        
+
         pbar = tqdm(total=4)
         
-        backend.clear_session()
-        gc.collect()
-        tf.compat.v1.reset_default_graph()
-        activation = activations.swish
-        optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes+input_nodes_adjust, nodes, layer_number, cells)
-        history_input_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
+        results = subprocess.run(['python', 'input_hyp.py', str(cells), strOutputFile, str(epochs), str(input_loss), str(input_nodes), str(input_nodes_adjust), str(input_placehold), str(layer_number), str(lr), str(nodes)], text=True, capture_output=True)
+        #input_placehold, input_loss = input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust, input_placehold, layer_number, lr, nodes)
+        vals = results.stdout.split('\n')
+        input_placehold = int(vals[0])
+        input_loss = float(vals[1])
         
-        if input_nodes > input_nodes_adjust:
-            backend.clear_session()
-            gc.collect()
-            tf.compat.v1.reset_default_graph()
-            activation = activations.swish
-            optimizer = optimizers.Adam(learning_rate=0.001)
-            del model
-            model = dense_network(100, 2, 4, activation, optimizer, input_nodes-input_nodes_adjust, nodes, layer_number, cells)
-            history_input_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-            if history_input_nodes.history["loss"][-1] < history_input_nodes_negative.history["loss"][-1]:
-                input_placehold = input_nodes + input_nodes_adjust
-                input_loss = history_input_nodes.history["loss"][-1]
-                
-            else:
-                input_placehold = input_nodes - input_nodes_adjust
-                input_loss = history_input_nodes_negative.history["loss"][-1]
-        else:
-            if history_input_nodes.history["loss"][-1] < input_loss:
-                input_placehold = input_nodes + input_nodes_adjust
-                input_loss = history_input_nodes.history["loss"][-1]
-                
-
         pbar.update(1)
-        backend.clear_session()
-        gc.collect()
-        tf.compat.v1.reset_default_graph()
-        del model
-        activation = activations.swish
-        optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
-        history_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-        if nodes > nodes_adjust:
-            backend.clear_session()
-            gc.collect()
-            tf.compat.v1.reset_default_graph()
-            del model
-            activation = activations.swish
-            optimizer = optimizers.Adam(learning_rate=0.001)
-            model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
-            history_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-            if history_nodes.history["loss"][-1] < history_nodes_negative.history["loss"][-1]:
-                node_placehold = nodes + nodes_adjust
-                nodes_loss = history_nodes.history["loss"][-1]
-            else:
-                node_placehold = nodes - nodes_adjust
-                nodes_loss = history_nodes_negative.history["loss"][-1]
-        else:
-            if history_nodes.history["loss"][-1] < nodes_loss:
-                node_placehold = nodes + nodes_adjust
-                nodes_loss = history_nodes.history["loss"][-1]
-
-
-        pbar.update(1)
-        backend.clear_session()
-        gc.collect()
-        del model
-        tf.compat.v1.reset_default_graph()
-        activation = activations.swish
-        optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust, cells)
-        history_layer = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-        if layer_number > layer_number_adjust+0.1:
-            backend.clear_session()
-            gc.collect()
-            del model
-            tf.compat.v1.reset_default_graph()
-            activation = activations.swish
-            optimizer = optimizers.Adam(learning_rate=0.001)
-            model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust, cells)
-            history_layer_number_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-            if history_layer.history["loss"][-1] < history_layer_number_negative.history["loss"][-1]:
-                layer_placehold = layer_number + layer_number_adjust
-                layers_loss = history_layer.history["loss"][-1]
-                if layer_number == 0:
-                    layer_number == 1
-            else:
-                layer_placehold = layer_number - layer_number_adjust
-                layers_loss = history_layer_number_negative.history["loss"][-1]
-                if layer_placehold == 0:
-                    layer_placehold == 1
-        else:
-            if history_layer.history["loss"][-1] < layers_loss:
-                layer_placehold = layer_number + layer_number_adjust
-                layers_loss = history_layer.history["loss"][-1]
-                if layer_number == 0:
-                    layer_number == 1
         
-        if layer_number == 0:
-            layer_number == 1
+        results = subprocess.run(['python', 'node_hyp.py', str(cells), strOutputFile, str(epochs), str(input_nodes), str(layer_number), str(lr), str(node_placehold), str(nodes), str(nodes_adjust), str(nodes_loss)], text=True, capture_output=True)
+        #node_placehold, nodes_loss = node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss)
+        vals = results.stdout.split('\n')
+        node_placehold = int(vals[0])
+        nodes_loss = float(vals[1])
+        
         pbar.update(1)
-        backend.clear_session()
-        gc.collect()
-        del model
-        tf.compat.v1.reset_default_graph()
-        activation = activations.swish
-        optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
-        history_cells = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-        if cells > cells_adjust:
-            backend.clear_session()
-            gc.collect()
-            del model
-            tf.compat.v1.reset_default_graph()
-            activation = activations.swish
-            optimizer = optimizers.Adam(learning_rate=0.001)
-            backend.clear_session()
-            gc.collect()
-
-            model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
-            history_cells_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32, validation_split=0.01)
-            if history_cells.history["loss"][-1] < history_cells_negative.history["loss"][-1]:
-                cell_placehold = cells + cells_adjust
-                cells_loss = history_cells.history["loss"][-1]
-            else:
-                cell_placehold = cells + cells_adjust
-                cells_loss = history_cells_negative.history["loss"][-1]
-        else:
-            if history_cells.history["loss"][-1] < cells_loss:
-                cell_placehold = cells + cells_adjust
-                cells_loss = history_cells.history["loss"][-1]
+        
+        results = subprocess.run(['python', 'layer_hyp.py', str(cells), strOutputFile, str(epochs), str(input_nodes), str(layer_number), str(layer_number_adjust), str(layer_placehold), str(layers_loss), str(lr), str(nodes)], text=True, capture_output=True)
+        #layer_placehold, layers_loss = layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adjust, layer_placehold, layers_loss, lr, nodes)
+        vals = results.stdout.split('\n')
+        layer_placehold = int(vals[0])
+        layers_loss = float(vals[1])
+        
+        
+        pbar.update(1)
+        
+        results = subprocess.run(['python', 'cells_hyp.py', str(cell_placehold), str(cells), str(cells_adjust), str(cells_loss), strOutputFile, str(epochs), str(input_nodes), str(layer_number), str(lr), str(nodes)], text=True, capture_output=True)
+        #cell_placehold, cells_loss = cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes)
+        vals = results.stdout.split('\n')
+        cell_placehold = int(vals[0])
+        cells_loss = float(vals[1])
+        
         pbar.update(1)
         pbar.close()
+
         min_loss = input_loss
         reduce = 0
         if nodes_loss < min_loss:
@@ -254,20 +154,19 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
             min_loss = layers_loss
             reduce = 2
         if cells_loss < min_loss:
+            min_loss = layers_loss
             reduce = 3
-        
-        reduce=5
-        
+
         if reduce == 0:
             input_nodes = input_placehold
-        if reduce == 0:
+        if reduce == 1:
             nodes = node_placehold
         if reduce == 2:
-            layer_number = layer_number
+            layer_number = layer_placehold
         if reduce == 3:
-            cells = cells
-        
-        
+            cells = cell_placehold
+            
+
         input_node_string = "Input Node Number: " + str(input_nodes) + ", Loss = " + str(input_loss)
         node_string = "Node Number: " + str(nodes) + ", Loss = " + str(nodes_loss)
         layer_string = "Layer Number: " + str(layer_number) + ", Loss = " + str(layers_loss)
@@ -278,47 +177,200 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
         print(node_string)
         print(layer_string)
         print(cell_string)
-
         iteration += 1
         if iteration % check_iteration == 0:
-            print("Testing Best Model")
-            
-            backend.clear_session()
-            gc.collect()
-            activation = activations.swish
-            optimizer = optimizers.Adam(learning_rate=0.001)
-            del model
-            model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
-            history = model.fit(datas[0], datas[1], epochs=test_epochs, callbacks=[lr], verbose=0)
-            loss = history.history["loss"][-1]
-            print("Testing Loss = {}, Previous Loss = {}".format(loss, previous_loss))
-            if loss < previous_loss:
-                previous_loss = loss
-                save_model = model
-                best_input_nodes = input_nodes
-                best_nodes = nodes
-                best_layer_number = layer_number
-                best_cells = cells
-                del model
-            else:
+            print("Testing Model")
+            results = subprocess.run(['python', 'test_model.py', str(input_nodes), str(nodes), str(layer_number), str(cells), strOutputFile, str(test_epochs), str(lr), str(previous_loss), directory], text=True, capture_output=True)
+            vals = results.stdout.split('\n')
+            print(vals[0])
+            break_point = int(vals[1])
+            previous_loss = float(vals[2])
+            print(previous_loss)
+            if break_point:
                 break
-    try:
-        os.mkdir("Hyperparameter_Explore")
-    except OSError:
-        print("Hyperparameter_Explore folder already exists!")
-    os.mkdir("Hyperparameter_Explore/{}".format(directory))
-    training_file = open("Hyperparameter_Explore/{}/loss_{}_parameters".format(directory, previous_loss), "w")
-    input_node_string = "Input Node Number: " + str(best_input_nodes)
-    node_string = "Node Number: " + str(best_nodes)
-    layer_string = "Layer Number: " + str(best_layer_number)
-    cell_string = "Cell Number: " + str(best_cells)
-    training_file.write(input_node_string)
-    training_file.write(node_string)
-    training_file.write(layer_string)
-    training_file.write(cell_string)
-    training_file.close()
-    save_model.save_weights('Hyperparameter_Explore/{}/weights.h5'.format(directory))
-    return save_model
+            
+
+def test_model(input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, previous_loss, directory):
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
+    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
+    history = model.fit(datas[0], datas[1], epochs=test_epochs, callbacks=[lr], verbose=0)
+    loss = history.history["loss"][-1]
+    print("Testing Loss = {}, Previous Loss = {} ".format(loss, previous_loss))
+    if loss < previous_loss:
+        try:
+            os.mkdir("Hyperparameter_Explore/{}".format(directory))
+        except OSError:
+            gc.collect()
+        training_file = open("Hyperparameter_Explore/{}/i_{}_n_{}_l_{}_c_{}_loss_{}_parameters.txt".format(directory, input_nodes, nodes, layer_number, cells, previous_loss), "w")
+        input_node_string = "Input Node Number: " + str(input_nodes)
+        node_string = "Node Number: " + str(nodes)
+        layer_string = "Layer Number: " + str(layer_number)
+        cell_string = "Cell Number: " + str(cells)
+        training_file.write(input_node_string)
+        training_file.write(node_string)
+        training_file.write(layer_string)
+        training_file.write(cell_string)
+        training_file.close()
+        model.save_weights('Hyperparameter_Explore/{}/i_{}_n_{}_l_{}_c_{}.h5'.format(directory, input_nodes, nodes, layer_number, cells))
+        print(0, " ")
+        print(loss)
+    else:
+        print(1)
+
+
+def cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes):
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
+    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
+    history_cells = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
+                              validation_split=0.01)
+    del model
+    backend.clear_session()
+    tf.compat.v1.reset_default_graph()
+    gc.collect()
+    if cells > cells_adjust:
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
+       
+        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
+        history_cells_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
+                                           batch_size=32, validation_split=0.01)
+        del model
+        backend.clear_session()
+        tf.compat.v1.reset_default_graph()
+        gc.collect()
+        if history_cells.history["loss"][-1] < history_cells_negative.history["loss"][-1]:
+            cell_placehold = cells + cells_adjust
+            cells_loss = history_cells.history["loss"][-1]
+        else:
+            cell_placehold = cells + cells_adjust
+            cells_loss = history_cells_negative.history["loss"][-1]
+    else:
+        if history_cells.history["loss"][-1] < cells_loss:
+            cell_placehold = cells + cells_adjust
+            cells_loss = history_cells.history["loss"][-1]
+    return cell_placehold, cells_loss
+
+
+def layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adjust, layer_placehold, layers_loss, lr,
+              nodes):
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
+    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust,
+                          cells)
+    history_layer = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
+                              validation_split=0.01)
+    del model
+    backend.clear_session()
+    tf.compat.v1.reset_default_graph()
+    gc.collect()
+    if layer_number > layer_number_adjust + 0.1:
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
+        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust,
+                              cells)
+        history_layer_number_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0,
+                                                  shuffle=True, batch_size=32, validation_split=0.01)
+        del model
+        backend.clear_session()
+        tf.compat.v1.reset_default_graph()
+        gc.collect()
+        if history_layer.history["loss"][-1] < history_layer_number_negative.history["loss"][-1]:
+            layer_placehold = layer_number + layer_number_adjust
+            layers_loss = history_layer.history["loss"][-1]
+        else:
+            layer_placehold = layer_number - layer_number_adjust
+            layers_loss = history_layer_number_negative.history["loss"][-1]
+            if layer_placehold == 0:
+                layer_placehold = 1
+    else:
+        if history_layer.history["loss"][-1] < layers_loss:
+            layer_placehold = layer_number + layer_number_adjust
+            layers_loss = history_layer.history["loss"][-1]
+    gc.collect()
+    return layer_placehold, layers_loss
+
+
+def node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss):
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
+    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
+    history_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
+                              validation_split=0.01)
+    del model
+    backend.clear_session()
+    tf.compat.v1.reset_default_graph()
+    gc.collect()
+    if nodes > nodes_adjust:
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
+        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
+        history_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
+                                           batch_size=32, validation_split=0.01)
+        del model
+        backend.clear_session()
+        tf.compat.v1.reset_default_graph()
+        gc.collect()
+        if history_nodes.history["loss"][-1] < history_nodes_negative.history["loss"][-1]:
+            node_placehold = nodes + nodes_adjust
+            nodes_loss = history_nodes.history["loss"][-1]
+        else:
+            node_placehold = nodes - nodes_adjust
+            nodes_loss = history_nodes_negative.history["loss"][-1]
+    else:
+        if history_nodes.history["loss"][-1] < nodes_loss:
+            node_placehold = nodes + nodes_adjust
+            nodes_loss = history_nodes.history["loss"][-1]
+    gc.collect()
+    return node_placehold, nodes_loss
+
+
+def input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust, input_placehold, layer_number, lr,
+              nodes):
+    activation = activations.swish
+    optimizer = optimizers.Adam(learning_rate=0.001)
+    model = dense_network(100, 2, 4, activation, optimizer, input_nodes + input_nodes_adjust, nodes, layer_number,
+                          cells)
+    history_input_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
+                                    batch_size=32, validation_split=0.01)
+    del model
+    backend.clear_session()
+    tf.compat.v1.reset_default_graph()
+    gc.collect()
+    if input_nodes > input_nodes_adjust:
+        activation = activations.swish
+        optimizer = optimizers.Adam(learning_rate=0.001)
+        model = dense_network(100, 2, 4, activation, optimizer, input_nodes - input_nodes_adjust, nodes, layer_number,
+                              cells)
+        history_input_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0,
+                                                 shuffle=True, batch_size=32, validation_split=0.01)
+        del model
+        backend.clear_session()
+        tf.compat.v1.reset_default_graph()
+        gc.collect()
+        if history_input_nodes.history["loss"][-1] < history_input_nodes_negative.history["loss"][-1]:
+            input_placehold = input_nodes + input_nodes_adjust
+            input_loss = history_input_nodes.history["loss"][-1]
+
+        else:
+            input_placehold = input_nodes - input_nodes_adjust
+            input_loss = history_input_nodes_negative.history["loss"][-1]
+    else:
+        if history_input_nodes.history["loss"][-1] < input_loss:
+            input_placehold = input_nodes + input_nodes_adjust
+            input_loss = history_input_nodes.history["loss"][-1]
+    gc.collect()
+    return input_loss, input_placehold
+
+
+def step_decay(epoch):
+    int_rate = 0.001
+    return max(int_rate * 0.1 ** int(epoch / 100), 1e-6)
+
+
+def lr_scheduler():
+    return callbacks.LearningRateScheduler(step_decay)
 
 
 def main():
@@ -332,31 +384,28 @@ def main():
 
     data = creating_data_graph(frames, points, scaling)
 
-    #datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
+    # datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
 
-
-    def step_decay(epoch):
+    def step_decay_1(epoch):
         int_rate = 0.001
-        return np.exp(np.log(0.1)/100)**epoch * int_rate
-    
+        return np.exp(np.log(0.1) / 100) ** epoch * int_rate
+
     def step_decay_2(epoch):
         int_rate = 0.001
-        return np.exp(epoch*np.log(0.1)/120) * (1+0.3*np.sin((2*3.14*epoch)/50)) * int_rate
-    
+        return np.exp(epoch * np.log(0.1) / 120) * (1 + 0.3 * np.sin((2 * 3.14 * epoch) / 50)) * int_rate
+
     def step_decay_3(epoch):
         int_rate = 0.001
-        return max(int_rate * 0.1 ** int(epoch/100), 1e-6)
-        
-            
+        return max(int_rate * 0.1 ** int(epoch / 100), 1e-6)
 
-    lr = callbacks.LearningRateScheduler(step_decay_3)
-    parameter_epochs = 3
-    testing_epochs = 5
-    iteration_check = 50
-    model = hyperparameter_explore(lr, data, parameter_epochs, testing_epochs, iteration_check)
-    
+    lr = callbacks.LearningRateScheduler(step_decay)
+    parameter_epochs = 250
+    testing_epochs = 300
+    iteration_check = 10
+    hyperparameter_explore(lr, data, parameter_epochs, testing_epochs, iteration_check)
+
     test_data = np.array([data[0][10]])
-    
+
     '''
     xx = data[1][:, 0, 0]
     print(np.argmax(xx))
@@ -365,18 +414,17 @@ def main():
     plt.show()
     plt.plot(yy[:])
     plt.show()
-    #'''
     
-    #list_of_files = glob.glob('saved_weights/*')
-    #latest_file = max(list_of_files, key=os.path.getctime)
-    #print(latest_file)
-    model = dense_network(100, 2, 4, activation, optimizer, 130, 65, 7, 23)
-    pred = model(test_data)
-    #model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
-    print(model.summary())
-    history = model.fit(data[0], data[1], epochs=250, callbacks=[lr], verbose=1, shuffle=True)
 
-    
+    # list_of_files = glob.glob('saved_weights/*')
+    # latest_file = max(list_of_files, key=os.path.getctime)
+    # print(latest_file)
+    #model = dense_network(100, 2, 4, activation, optimizer, 130, 65, 7, 23)
+    #pred = model(test_data)
+    # model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
+    print(model.summary())
+    #history = model.fit(data[0], data[1], epochs=250, callbacks=[lr], verbose=1, shuffle=True)
+
     test_data = np.array([data[0][10]])
     dx = data[1][10, :, 0]
     dy = data[1][10, :, 1]
@@ -388,20 +436,22 @@ def main():
     plt.show()
 
     prediction_gif(model, data, 200)
-    
-    
+    #'''
+
+
 def load_data(points, frames, time_step, scaling):
     training_data = []
     labels = []
     pbar = tqdm(total=9)
     for simulations in range(9):
-        simulation=simulations
+        simulation = simulations
         pbar.update()
         data_names = glob.glob("training_data/xmin_Simulation_{}_points_{}/*".format(simulation, points))
         folder_length = len(data_names)
         data_array = []
         for file_num in range(3, folder_length + 1):
-            data = np.load("training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
+            data = np.load(
+                "training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
             data_array.append(data)
         xy_data = []
         for data in data_array:
@@ -433,7 +483,7 @@ def velocity_calculation(data, scaling, time_step):
     data = np.array(data)
     velocity = [data[time_step] - data[0]]
     for i in range(1, len(data) - time_step):
-        vel = (data[i + time_step] - data[i])*scaling
+        vel = (data[i + time_step] - data[i]) * scaling
         velocity.append(vel)
     return np.array(velocity)
 
@@ -460,7 +510,8 @@ def prediction_gif(model, initial_data, gif_length):
         ax = fig.gca()
         pred = model(prediction).numpy()
         # prediction = prediction[:, :, :, :-1]
-        data_adjusted = position_transform([prediction[0, :, -1, 0], prediction[0, :, -1, 1]], [pred[0, :, 0], pred[0, :, 1]], 100)
+        data_adjusted = position_transform([prediction[0, :, -1, 0], prediction[0, :, -1, 1]],
+                                           [pred[0, :, 0], pred[0, :, 1]], 100)
         prediction[0, :, 0] = prediction[0, :, 1]
         for i in range(len(prediction[0])):
             prediction[0, i, 1, 0] = data_adjusted[0][i]
@@ -469,8 +520,8 @@ def prediction_gif(model, initial_data, gif_length):
             prediction[0, i, 1, 3] = pred[0, i, 1]
 
         # prediction = distance_conversion([prediction, [0]], pbar_toggle=False)
-        x = initial_data[0][15+f*5, :, -1, 0]
-        y = initial_data[0][15+f*5, :, -1, 1]
+        x = initial_data[0][15 + f * 5, :, -1, 0]
+        y = initial_data[0][15 + f * 5, :, -1, 1]
         ax.scatter(y, x, s=0.5)
         ax.scatter(data_adjusted[1], data_adjusted[0], s=0.5)
 

@@ -4,7 +4,7 @@ from tensorflow.keras import layers, Model, losses, metrics, regularizers, activ
 from keras.engine import data_adapter
 import tensorflow as tf
 
-def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
+def dense_network_old(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
     # x = layers.Dense(nodes, activation=activation)(x)

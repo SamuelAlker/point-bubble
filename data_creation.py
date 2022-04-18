@@ -261,7 +261,7 @@ def circ_array(arrays):
 
 def border_data(point_num, simulation_num, file_num):
     # data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/*")
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_" + str(simulation_num) + "/data_" + str(
+    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0002_" + str(simulation_num) + "/data_" + str(
         file_num) + ".npy")
     final_array = [np.zeros(point_num), np.zeros(point_num)]
     idx = find_zero_2(file[1], file[0])
@@ -284,7 +284,7 @@ def border_data(point_num, simulation_num, file_num):
 
 
 def save_border_data(point_num, simulation):
-    data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
+    data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0002_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
         os.mkdir("training_data/xmin_Simulation_{}_points_{}/".format(simulation, point_num))
@@ -304,13 +304,13 @@ def make_gif(images, name):
 
 def main():
     print("Running:")
-    convert_dat_files([0], 0.0001)
+    #convert_dat_files([0], 0.0002)
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(10, 20):
+    for simulation in range(0, 10):
         save_border_data(points, simulation)
-        plot_gif(points, simulation)
+        # plot_gif(points, simulation)
 
     # kwargs_write = {'fps': 0.2 , 'quantizer': 'nq'}
     # imageio.mimsave('./powers.gif', [plot_for_offset(i) for i in range(900, 970)], fps=0.2)
