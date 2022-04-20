@@ -181,7 +181,7 @@ def find_zero_2(x_array, y_array):
     y_copy = np.array(y_array)
     average_y = np.average(y_array)
     best_idx = np.abs(y_copy-average_y).argmin()
-    for i in range(20):
+    for i in range(50):
         idx = np.abs(y_copy-average_y).argmin()
         if x_array[idx] < x_array[best_idx]:
             best_idx = idx
@@ -261,7 +261,7 @@ def circ_array(arrays):
 
 def border_data(point_num, simulation_num, file_num):
     # data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/*")
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0002_" + str(simulation_num) + "/data_" + str(
+    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_" + str(simulation_num) + "/data_" + str(
         file_num) + ".npy")
     final_array = [np.zeros(point_num), np.zeros(point_num)]
     idx = find_zero_2(file[1], file[0])
@@ -284,7 +284,7 @@ def border_data(point_num, simulation_num, file_num):
 
 
 def save_border_data(point_num, simulation):
-    data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0002_{}/*".format(str(simulation)))
+    data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
         os.mkdir("training_data/xmin_Simulation_{}_points_{}/".format(simulation, point_num))
@@ -308,7 +308,7 @@ def main():
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(0, 10):
+    for simulation in range(0, 16):
         save_border_data(points, simulation)
         # plot_gif(points, simulation)
 
