@@ -17,7 +17,9 @@ def main():
     nodes = int(sys.argv[8])
     nodes_adjust = int(sys.argv[9])
     nodes_loss = float(sys.argv[10])
-    node_placehold, node_loss = training_new.node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss)
+    normal_file = sys.argv[11]
+    normalisation_layer = pickle.load(open(normal_file))
+    node_placehold, node_loss = training_new.node_hyp(normalisation_layer, cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss)
     print(node_placehold)
     print(node_loss)
     

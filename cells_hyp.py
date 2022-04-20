@@ -17,7 +17,9 @@ def main():
     layer_number = int(sys.argv[8])
     lr = training_new.lr_scheduler()
     nodes = int(sys.argv[10])
-    cell_placehold, cells_loss = training_new.cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes)
+    normal_file = sys.argv[11]
+    normalisation_layer = pickle.load(open(normal_file))
+    cell_placehold, cells_loss = training_new.cells_hyp(normalisation_layer, cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes)
     print(cell_placehold)
     print(cells_loss)
     

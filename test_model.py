@@ -16,7 +16,9 @@ def main():
     lr = training_new.lr_scheduler()
     previous_loss = float(sys.argv[8])
     directory = str(sys.argv[9])
-    break_point = training_new.test_model(input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, previous_loss, directory)
+    normal_file = sys.argv[10]
+    normalisation_layer = pickle.load(open(normal_file))
+    break_point = training_new.test_model(normalisation_layer, input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, previous_loss, directory)
     print(break_point)
 
 

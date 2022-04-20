@@ -28,10 +28,10 @@ def residual_cell(x, activation, layer_size=2, size=10):
     return x
 
 
-def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
-    tf.compat.v1.keras.backend.clear_session()
+def dense_network(normalisation_layer, input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
+    x = normalisation_layer(x)
     # x = layers.Dense(nodes, activation=activation)(x)
 
     residual_cells = [layer_num, nodes]
@@ -76,7 +76,7 @@ class CustomModel(Model):
         return {"MSE": 1}
 
 
-def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
+def hyperparameter_explore(normalisation_layer, lr, datas, epochs, test_epochs, check_iteration):
     tf.config.run_functions_eagerly(False)
     today = datetime.today()
     directory = today.strftime("%d_%m_%Y_%H_%M")
@@ -103,6 +103,9 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
     strOutputFile = os.path.join(os.getenv('TEMP'), "array.pkl")
     pickle.dump(datas, open(strOutputFile, 'wb'))
 
+    normal_file = os.path.join(os.getenv('TEMP'), "array.pkl")
+    pickle.dump(normalisation_layer, open(normal_file, 'wb'))
+
     while True:
         input_placehold = 0
         node_placehold = 0
@@ -113,7 +116,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
 
         results = subprocess.run(
             ['python', 'input_hyp.py', str(cells), strOutputFile, str(epochs), str(input_loss), str(input_nodes),
-             str(input_nodes_adjust), str(input_placehold), str(layer_number), str(lr), str(nodes)], text=True,
+             str(input_nodes_adjust), str(input_placehold), str(layer_number), str(lr), str(nodes), normal_file], text=True,
             capture_output=True)
         # input_placehold, input_loss = input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust, input_placehold, layer_number, lr, nodes)
         vals = results.stdout.split('\n')
@@ -124,7 +127,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
 
         results = subprocess.run(
             ['python', 'node_hyp.py', str(cells), strOutputFile, str(epochs), str(input_nodes), str(layer_number),
-             str(lr), str(node_placehold), str(nodes), str(nodes_adjust), str(nodes_loss)], text=True,
+             str(lr), str(node_placehold), str(nodes), str(nodes_adjust), str(nodes_loss), normal_file], text=True,
             capture_output=True)
         # node_placehold, nodes_loss = node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss)
         vals = results.stdout.split('\n')
@@ -135,7 +138,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
 
         results = subprocess.run(
             ['python', 'layer_hyp.py', str(cells), strOutputFile, str(epochs), str(input_nodes), str(layer_number),
-             str(layer_number_adjust), str(layer_placehold), str(layers_loss), str(lr), str(nodes)], text=True,
+             str(layer_number_adjust), str(layer_placehold), str(layers_loss), str(lr), str(nodes), normal_file], text=True,
             capture_output=True)
         # layer_placehold, layers_loss = layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adjust, layer_placehold, layers_loss, lr, nodes)
         vals = results.stdout.split('\n')
@@ -146,7 +149,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
 
         results = subprocess.run(
             ['python', 'cells_hyp.py', str(cell_placehold), str(cells), str(cells_adjust), str(cells_loss),
-             strOutputFile, str(epochs), str(input_nodes), str(layer_number), str(lr), str(nodes)], text=True,
+             strOutputFile, str(epochs), str(input_nodes), str(layer_number), str(lr), str(nodes), normal_file], text=True,
             capture_output=True)
         # cell_placehold, cells_loss = cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes)
         vals = results.stdout.split('\n')
@@ -202,10 +205,10 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
                 break
 
 
-def test_model(input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, previous_loss, directory):
+def test_model(normalisation_layer, input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, previous_loss, directory):
     activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
-    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
+    model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells)
     history = model.fit(datas[0], datas[1], epochs=test_epochs, callbacks=[lr], verbose=0)
     loss = history.history["loss"][-1]
     print("Testing Loss = {}, Previous Loss = {} ".format(loss, previous_loss))
@@ -236,10 +239,10 @@ def test_model(input_nodes, nodes, layer_number, cells, datas, test_epochs, lr, 
         print(1)
 
 
-def cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes):
+def cells_hyp(normalisation_layer, cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, input_nodes, layer_number, lr, nodes):
     activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
-    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
+    model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells + cells_adjust)
     history_cells = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
                               validation_split=0.01)
     del model
@@ -250,7 +253,7 @@ def cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, in
         activation = activations.swish
         optimizer = optimizers.Adam(learning_rate=0.001)
 
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
+        model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number, cells - cells_adjust)
         history_cells_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
                                            batch_size=32, validation_split=0.01)
         del model
@@ -270,11 +273,11 @@ def cells_hyp(cell_placehold, cells, cells_adjust, cells_loss, datas, epochs, in
     return cell_placehold, cells_loss
 
 
-def layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adjust, layer_placehold, layers_loss, lr,
+def layer_hyp(normalisation_layer, cells, datas, epochs, input_nodes, layer_number, layer_number_adjust, layer_placehold, layers_loss, lr,
               nodes):
     activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
-    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust,
+    model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number + layer_number_adjust,
                           cells)
     history_layer = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
                               validation_split=0.01)
@@ -285,7 +288,7 @@ def layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adju
     if layer_number > layer_number_adjust + 0.1:
         activation = activations.swish
         optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust,
+        model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes, layer_number - layer_number_adjust,
                               cells)
         history_layer_number_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0,
                                                   shuffle=True, batch_size=32, validation_split=0.01)
@@ -309,10 +312,10 @@ def layer_hyp(cells, datas, epochs, input_nodes, layer_number, layer_number_adju
     return layer_placehold, layers_loss
 
 
-def node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss):
+def node_hyp(normalisation_layer, cells, datas, epochs, input_nodes, layer_number, lr, node_placehold, nodes, nodes_adjust, nodes_loss):
     activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
-    model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
+    model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes + nodes_adjust, layer_number, cells)
     history_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True, batch_size=32,
                               validation_split=0.01)
     del model
@@ -322,7 +325,7 @@ def node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold
     if nodes > nodes_adjust:
         activation = activations.swish
         optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
+        model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes, nodes - nodes_adjust, layer_number, cells)
         history_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
                                            batch_size=32, validation_split=0.01)
         del model
@@ -343,11 +346,11 @@ def node_hyp(cells, datas, epochs, input_nodes, layer_number, lr, node_placehold
     return node_placehold, nodes_loss
 
 
-def input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust, input_placehold, layer_number, lr,
+def input_hyp(normalisation_layer, cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust, input_placehold, layer_number, lr,
               nodes):
     activation = activations.swish
     optimizer = optimizers.Adam(learning_rate=0.001)
-    model = dense_network(100, 2, 4, activation, optimizer, input_nodes + input_nodes_adjust, nodes, layer_number,
+    model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes + input_nodes_adjust, nodes, layer_number,
                           cells)
     history_input_nodes = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0, shuffle=True,
                                     batch_size=32, validation_split=0.01)
@@ -358,7 +361,7 @@ def input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust,
     if input_nodes > input_nodes_adjust:
         activation = activations.swish
         optimizer = optimizers.Adam(learning_rate=0.001)
-        model = dense_network(100, 2, 4, activation, optimizer, input_nodes - input_nodes_adjust, nodes, layer_number,
+        model = dense_network(normalisation_layer, 100, 2, 4, activation, optimizer, input_nodes - input_nodes_adjust, nodes, layer_number,
                               cells)
         history_input_nodes_negative = model.fit(datas[0], datas[1], epochs=epochs, callbacks=[lr], verbose=0,
                                                  shuffle=True, batch_size=32, validation_split=0.01)
@@ -413,12 +416,25 @@ def main():
     points = 100
     kernal_size = 32
     scaling = 250
-    simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-    # simulations_array = [0, 1]
+    # simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    simulations_array = [0, 1]
     data = creating_data_graph(frames, points, scaling, simulations_array)
-    min_c, max_c = data_normalisation_constants(data[0])
-    data[0] = data_normalisation(data[0], min_c, max_c)
-    data[1] = data_normalisation(data[1], min_c[:, 2:], max_c[:, 2:])
+
+    normalisation_layer = tf.keras.layers.Normalization(axis=1)
+    flattened = tf.reshape(data[0], (len(data[0]), points*frames*4))
+    normalisation_layer.adapt(flattened)
+    normalised_output_layer = tf.keras.layers.Normalization(axis=1)
+    flattened = tf.reshape(data[1], (len(data[1]), points * 2))
+    normalised_output_layer.adapt(flattened)
+    normalised_labels = normalised_output_layer(flattened).numpy()
+    data[1] = np.reshape(normalised_labels, newshape=(len(data[1]), 100, 2))
+    denoramlised_output_layer = tf.keras.layers.Normalization(axis=-1, invert=True)
+    denoramlised_output_layer.adapt(flattened)
+
+
+    # min_c, max_c = data_normalisation_constants(data[0])
+    # data[0] = data_normalisation(data[0], min_c, max_c)
+    # data[1] = data_normalisation(data[1], min_c[:, 2:], max_c[:, 2:])
 
     # datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
 
@@ -445,12 +461,13 @@ def main():
     # list_of_files = glob.glob('saved_weights/*')
     # latest_file = max(list_of_files, key=os.path.getctime)
     # print(latest_file)
-    model = dense_network(100, frames, 4, activation, optimizer, 240, 80, 3, 20)
+    model = dense_network(normalisation_layer, 100, frames, 4, activation, optimizer, 240, 80, 3, 20)
     pred = model(test_data)
     # model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
     # print(model.summary())
-    history = model.fit(data[0], data[1], epochs=310, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_split=0.05)
-    model.save_weights("a.h5")
+    history = model.fit(data[0], data[1], epochs=10, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_split=0.05)
+    model.save_weights("b.h5")
+    model = model()(denoramlised_output_layer)
     # model.load_weights("a.h5")
     test_data = np.array([data[0][10]])
     dx = data[1][10, :, 0]
@@ -461,14 +478,12 @@ def main():
     plt.scatter(dx_p, dy_p, s=0.5)
     plt.scatter(dx, dy, color='r', s=0.5)
     plt.show()
-    prediction_losses(model, scaling, frames, points, min_c, max_c)
+    prediction_losses(model, scaling, frames, points)
 
     for i in range(0, 16):
         data = creating_data_graph(frames, points, scaling, [i])
-        data[0] = data_normalisation(data[0], min_c, max_c)
-        data[1] = data_normalisation(data[1], min_c[:, 2:], max_c[:, 2:])
-        prediction_gif(model, data, min_c, max_c, scaling, type=False, name="pred_gif_delta"+str(i))
-        xy_predictions, xy_actual = prediction_gif(model, data, min_c, max_c, scaling, name="pred_gif_plot"+str(i))
+        prediction_gif(model, data, scaling, type=False, name="pred_gif_delta"+str(i))
+        xy_predictions, xy_actual = prediction_gif(model, data, scaling, name="pred_gif_plot"+str(i))
 
 
 
@@ -550,7 +565,7 @@ def position_transform(data, change, scaling):
     return data
 
 
-def prediction_gif(model, initial_data, min_c, max_c, scaling, type=True, name="pred_gif"):
+def prediction_gif(model, initial_data, scaling, type=True, name="pred_gif"):
     prediction = np.array([initial_data[0][10]])
     # plt.scatter(*zip(*prediction[0, :, 0:2]))
     # plt.Figure(figsize=[5, 5], dpi=300)
@@ -570,21 +585,21 @@ def prediction_gif(model, initial_data, min_c, max_c, scaling, type=True, name="
         ax = fig.gca()
         pred = model(prediction).numpy()
         # prediction = prediction[:, :, :, :-1]
-        corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
-        corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
-        diff_x = data_unnormalisation(pred[0, :, 0], min_c[:, 2], max_c[:, 2])
-        diff_y = data_unnormalisation(pred[0, :, 1], min_c[:, 3], max_c[:, 3])
+        corr_x = prediction[0, :, -1, 0]
+        corr_y = prediction[0, :, -1, 1]
+        diff_x = pred[0, :, 0]
+        diff_y = pred[0, :, 1]
         data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y], scaling)
         prediction[0, :, 0] = prediction[0, :, 1]
         for i in range(len(prediction[0])):
-            prediction[0, i, 1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
-            prediction[0, i, 1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
+            prediction[0, i, 1, 0] = data_adjusted[0][i]
+            prediction[0, i, 1, 1] = data_adjusted[1][i]
             prediction[0, i, 1, 2] = pred[0, i, 0]
             prediction[0, i, 1, 3] = pred[0, i, 1]
 
         if type:
-            x = data_unnormalisation(initial_data[0][15 + f * 5, :, -1, 0], min_c[:, 0], max_c[:, 0])
-            y = data_unnormalisation(initial_data[0][15 + f * 5, :, -1, 1], min_c[:, 1], max_c[:, 1])
+            x = initial_data[0][15 + f * 5, :, -1, 0]
+            y = initial_data[0][15 + f * 5, :, -1, 1]
             x_predictions.append(data_adjusted[0])
             y_predictions.append(data_adjusted[1])
             x_actual.append(x)
@@ -612,10 +627,9 @@ def prediction_gif(model, initial_data, min_c, max_c, scaling, type=True, name="
     return [x_predictions, y_predictions], [x_actual, y_actual]
 
 
-def prediction_losses(model, scaling, frames, points, min_c, max_c, type=True):
+def prediction_losses(model, scaling, frames, points, type=True):
     for sim in range(16):
         data = creating_data_graph(frames, points, scaling, [sim])
-        data[0] = data_normalisation(data[0], min_c, max_c)
         # data[1] = data_normalisation(data[1], min_c, max_c)
         prediction = np.array([data[0][10]])
         x_predictions = []
@@ -625,21 +639,21 @@ def prediction_losses(model, scaling, frames, points, min_c, max_c, type=True):
         for f in range(int(len(data[0])/5)-3):
             pred = model(prediction).numpy()
             # prediction = prediction[:, :, :, :-1]
-            corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
-            corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
-            diff_x = data_unnormalisation(pred[0, :, 0], min_c[:, 2], max_c[:, 2])
-            diff_y = data_unnormalisation(pred[0, :, 1], min_c[:, 3], max_c[:, 3])
+            corr_x = prediction[0, :, -1, 0]
+            corr_y = prediction[0, :, -1, 1]
+            diff_x = pred[0, :, 0]
+            diff_y = pred[0, :, 1]
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y], scaling)
             prediction[0, :, 0] = prediction[0, :, 1]
             for i in range(len(prediction[0])):
-                prediction[0, i, 1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
-                prediction[0, i, 1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
+                prediction[0, i, 1, 0] = data_adjusted[0][i]
+                prediction[0, i, 1, 1] = data_adjusted[1][i]
                 prediction[0, i, 1, 2] = pred[0, i, 0]
                 prediction[0, i, 1, 3] = pred[0, i, 1]
 
             if type:
-                x = data_unnormalisation(data[0][15 + f * 5, :, -1, 0], min_c[:, 0], max_c[:, 0])
-                y = data_unnormalisation(data[0][15 + f * 5, :, -1, 1], min_c[:, 1], max_c[:, 1])
+                x = data[0][15 + f * 5, :, -1, 0]
+                y = data[0][15 + f * 5, :, -1, 1]
                 x_predictions.append(data_adjusted[0])
                 y_predictions.append(data_adjusted[1])
                 x_actual.append(x)
@@ -752,27 +766,27 @@ def creating_data_graph(frames, points, scaling, simulations_array):
     pbar.close()
     return data
 
-def data_normalisation_constants(data):
-    min_array = []
-    max_array = []
-    for i in range(len(data[0])):
-        min_placeholder = np.min(data[:, i], axis=1)
-        min_array.append(np.min(min_placeholder, axis=0))
-        max_placeholder = np.max(data[:, i], axis=1)
-        max_array.append(np.max(max_placeholder, axis=0))
-    return np.array(min_array), np.array(max_array)
-
-def data_normalisation(data, min_array, max_array):
-    try:
-        for i in range(len(data[0])):
-            data[:, i] = ((data[:, i]-min_array[i])/(max_array[i]-min_array[i]))
-    except:
-        data = ((data - min_array) / (max_array - min_array))
-    return data
-
-def data_unnormalisation(data, min_, max_):
-    data = data*(max_-min_) + min_
-    return data
+# def data_normalisation_constants(data):
+#     min_array = []
+#     max_array = []
+#     for i in range(len(data[0])):
+#         min_placeholder = np.min(data[:, i], axis=1)
+#         min_array.append(np.min(min_placeholder, axis=0))
+#         max_placeholder = np.max(data[:, i], axis=1)
+#         max_array.append(np.max(max_placeholder, axis=0))
+#     return np.array(min_array), np.array(max_array)
+#
+# def data_normalisation(data, min_array, max_array):
+#     try:
+#         for i in range(len(data[0])):
+#             data[:, i] = ((data[:, i]-min_array[i])/(max_array[i]-min_array[i]))
+#     except:
+#         data = ((data - min_array) / (max_array - min_array))
+#     return data
+#
+# def data_unnormalisation(data, min_, max_):
+#     data = data*(max_-min_) + min_
+#     return data
 
 
 if __name__ == "__main__":
