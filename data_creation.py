@@ -299,7 +299,7 @@ def save_border_data(point_num, simulation):
 
 
 def make_gif(images, name):
-    imageio.mimsave("{}.gif".format(name), images)
+    imageio.mimsave("{}.gif".format(name), images, duration=0.0001)
 
 
 def main():
@@ -309,8 +309,8 @@ def main():
     #     save_border_data(1000, i)
     points = 100
     for simulation in range(0, 16):
-        save_border_data(points, simulation)
-        # plot_gif(points, simulation)
+        # save_border_data(points, simulation)
+        plot_gif(points, simulation)
 
     # kwargs_write = {'fps': 0.2 , 'quantizer': 'nq'}
     # imageio.mimsave('./powers.gif', [plot_for_offset(i) for i in range(900, 970)], fps=0.2)
@@ -324,8 +324,8 @@ def plot_gif(points, simulation):
     image_array = []
     pbar = tqdm(total=folder_length-3)
     colors = cm.winter(np.linspace(0, 1, 100))
-    for i in range(3, folder_length, 5):
-        fig = plt.Figure(figsize=[5, 5], dpi=300)
+    for i in range(3, folder_length, 1):
+        fig = plt.Figure(figsize=[2, 2], dpi=70)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
         data = np.load("training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
