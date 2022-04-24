@@ -180,13 +180,17 @@ def find_zero(x_array, y_array):
 def find_zero_2(x_array, y_array):
     y_copy = np.array(y_array)
     average_y = np.average(y_array)
-    best_idx = np.abs(y_copy-average_y).argmin()
-    for i in range(50):
-        idx = np.abs(y_copy-average_y).argmin()
-        if x_array[idx] < x_array[best_idx]:
-            best_idx = idx
-        y_copy[idx] = 999
-    return best_idx
+    # best_idx = np.abs(y_copy-average_y).argmin()
+    idx = np.argwhere(np.diff(np.sign(average_y - y_copy))).flatten()
+    x_vals = x_array[idx]
+    best_idx = x_vals.argmin()
+    idx = idx[best_idx]
+    # for i in range(50):
+    #     idx = np.abs(y_copy-average_y).argmin()
+    #     if x_array[idx] < x_array[best_idx]:
+    #         best_idx = idx
+    #     y_copy[idx] = 999
+    return idx
 
 
 def positive_values(x_array, y_array):
@@ -287,14 +291,14 @@ def save_border_data(point_num, simulation):
     data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
-        os.mkdir("training_data/xmin_Simulation_{}_points_{}/".format(simulation, point_num))
+        os.mkdir("training_data/new_xmin_Simulation_{}_points_{}/".format(simulation, point_num))
     except OSError:
         print("Folder already exists!")
     pbar = tqdm(total=folder_length - 3)
     for i in range(3, folder_length):
         pbar.update()
         final_data = border_data(point_num, simulation, i)
-        np.save("training_data/xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
+        np.save("training_data/new_xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
     pbar.close()
 
 
@@ -308,8 +312,8 @@ def main():
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(0, 16):
-        # save_border_data(points, simulation)
+    for simulation in range(2, 17):
+        save_border_data(points, simulation)
         plot_gif(points, simulation)
 
     # kwargs_write = {'fps': 0.2 , 'quantizer': 'nq'}
@@ -319,16 +323,16 @@ def main():
 
 
 def plot_gif(points, simulation):
-    data_names = glob.glob("training_data/xmin_Simulation_{}_points_{}/*".format(simulation, points))
+    data_names = glob.glob("training_data/new_xmin_Simulation_{}_points_{}/*".format(simulation, points))
     folder_length = len(data_names)
     image_array = []
     pbar = tqdm(total=folder_length-3)
     colors = cm.winter(np.linspace(0, 1, 100))
     for i in range(3, folder_length, 1):
-        fig = plt.Figure(figsize=[2, 2], dpi=70)
+        fig = plt.Figure(figsize=[3, 3], dpi=200)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        data = np.load("training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
+        data = np.load("training_data/new_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
         ax.scatter(data[1], data[0], color=colors)
         ax.scatter(data[1][0], data[0][0], color='r')
         ax.scatter(data[1][25], data[0][25], color='r')

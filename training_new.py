@@ -1,6 +1,8 @@
 import ast
 import os
 import gc
+import pandas as pd
+import matplotlib.cm as cm
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import subprocess
@@ -9,6 +11,7 @@ import glob
 from tqdm import tqdm
 from tensorflow.keras import layers, initializers, activations, losses, metrics, optimizers, Model, callbacks, backend
 import tensorflow as tf
+import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
@@ -17,102 +20,32 @@ from datetime import datetime
 import pickle
 
 
-def dense_network_1(input_number, frames, points, activation, optimiser):
-    x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
-    x = layers.Flatten()(x_input)
-    xi = layers.Dense(200, activation=activations.linear)(x)
-    nodes = 200
-    intermission = 50
-    # xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-
-    xi = layers.Dense(nodes, activation=activation)(x)
-    xo = layers.Dense(nodes, activation=activation)(xi)
-    x = layers.Add()([xi, xo])
-    x = layers.Activation(activation=activation)(x)
-    # x = layers.Dense(intermission, activation=activation)(x)
-
-    x = layers.Dense(nodes, activation=activation)(x)
-    x = layers.Dense(200, activation=activations.linear)(x)
-    x = layers.Reshape((100, 2))(x)
-    model = Model(x_input, x)
-    model.compile(optimizer=optimiser, loss=losses.mean_absolute_error, run_eagerly=False, metrics=[metrics.mean_absolute_error])
-    return model
-
-
 def residual_cell(x, activation, layer_size=2, size=10):
     x_skip = x
-    for i in range(layer_size):
-        x = layers.Dense(size, activation=activation)(x)
+    x1 = layers.Dense(size/3, activation=activation)(x)
+    x2 = layers.Dense(size/3, activation=activation)(x)
+    x3 = layers.Dense(size / 3, activation=activation)(x)
+    for i in range(layer_size-1):
+        x1 = layers.Dense(size/3, activation=activation)(x1)
+        x2 = layers.Dense(size/3, activation=activation)(x2)
+        x3 = layers.Dense(size / 3, activation=activation)(x3)
+    x = layers.concatenate([x1, x2, x3])
     input_size = x_skip.get_shape()[1]
-    x = layers.Dense(input_size, activation=activation)(x)
+    # x = layers.Dense(input_size, activation=activation)(x)
     x = layers.Add()([x, x_skip])
     x = layers.Activation(activation=activation)(x)
     return x
 
 
 def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count):
+    tf.compat.v1.keras.backend.clear_session()
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
     # x = layers.Dense(nodes, activation=activation)(x)
 
     residual_cells = [layer_num, nodes]
-    x = layers.Dense(input_nodes, activation=activation)(x)
+    x = layers.Dense(nodes, activation=activations.linear)(x)
+    # x = layers.Dense(nodes, activation=activations.linear)(x)
     for i in range(cell_count):
         # x = layers.Dropout(0.05)(x)
         x = residual_cell(x, activation, layer_size=residual_cells[0], size=residual_cells[1])
@@ -122,8 +55,8 @@ def dense_network(input_number, frames, points, activation, optimiser, input_nod
     model = Model(x_input, x)
     # model.compile(optimizer=optimiser)
     # print(model.summary())
-    # model = CustomModel(x_input, x)
-    model.compile(optimizer=optimiser, loss=losses.mean_squared_error, run_eagerly=False,
+    # model = CustomModel(model)
+    model.compile(optimizer=optimiser, loss=losses.mean_absolute_error, run_eagerly=False,
                   metrics=[metrics.mean_absolute_error])
     return model
 
@@ -131,27 +64,33 @@ def dense_network(input_number, frames, points, activation, optimiser, input_nod
 class CustomModel(Model):
     loss_tracker = metrics.Mean(name="loss")
 
+    def __init__(self, i_model):
+        super(CustomModel, self).__init__()
+        self.i_model = i_model
+
+    def call(self, inputs, training=None, mask=None):
+        return self.i_model(inputs, training)
+
     def train_step(self, data):
         input_data, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        with tf.GradientTape(persistent=False, watch_accessed_variables=False) as tape_1:
-            tape_1.watch(self.trainable_variables)
+        with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape_1:
             y_pred = self(input_data, training=True)
             loss_tot = losses.mean_squared_error(y, y_pred)
         self.optimizer.minimize(loss_tot, [self.trainable_variables], tape=tape_1)
         self.loss_tracker.update_state(loss_tot)
-        # self.MAE_tracker.update_state(y, y_pred)
         loss = self.loss_tracker.result()
-
         # MAE = self.MAE_tracker.result()
         return {"loss": loss, "loss_tot": loss_tot}
 
     def test_step(self, data):
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+        y_pred = self(x, training=True)
+        loss_tot = losses.mean_squared_error(y, y_pred)
         self.loss_tracker.reset_states()
         # y_pred = self(x, training=False)
         # self.mse.update_state(y, y_pred)
         # mse_result = self.mse.result()
-        return {"MSE": 1}
+        return {"MSE": loss_tot}
 
 
 def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
@@ -159,16 +98,16 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
     today = datetime.today()
     directory = today.strftime("%d_%m_%Y_%H_%M")
 
-    input_nodes = 100
+    input_nodes = 200
     input_nodes_adjust = 10
 
-    nodes = 50
+    nodes = 200
     nodes_adjust = 5
 
-    layer_number = 2
+    layer_number = 3
     layer_number_adjust = 1
 
-    cells = 4
+    cells = 8
     cells_adjust = 1
 
     previous_loss = 999
@@ -187,8 +126,8 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
         layer_placehold = 0
         cell_placehold = 0
 
-        pbar = tqdm(total=4)
-
+        pbar = tqdm(total=3)
+        '''
         results = subprocess.run(
             ['python', 'input_hyp.py', str(cells), strOutputFile, str(epochs), str(input_loss), str(input_nodes),
              str(input_nodes_adjust), str(input_placehold), str(layer_number), str(lr), str(nodes)], text=True,
@@ -199,7 +138,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
         input_loss = float(vals[1])
 
         pbar.update(1)
-
+        '''
         results = subprocess.run(
             ['python', 'node_hyp.py', str(cells), strOutputFile, str(epochs), str(input_nodes), str(layer_number),
              str(lr), str(node_placehold), str(nodes), str(nodes_adjust), str(nodes_loss)], text=True,
@@ -255,13 +194,13 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
         if reduce == 3:
             cells = cell_placehold
 
-        input_node_string = "Input Node Number: " + str(input_nodes) + ", Loss = " + str(input_loss)
+        # input_node_string = "Input Node Number: " + str(input_nodes) + ", Loss = " + str(input_loss)
         node_string = "Node Number: " + str(nodes) + ", Loss = " + str(nodes_loss)
         layer_string = "Layer Number: " + str(layer_number) + ", Loss = " + str(layers_loss)
         cell_string = "Cell Number: " + str(cells) + ", Loss = " + str(cells_loss)
         print("#---------------------------#")
         print("Iteration", iteration)
-        print(input_node_string)
+        # print(input_node_string)
         print(node_string)
         print(layer_string)
         print(cell_string)
@@ -461,7 +400,7 @@ def input_hyp(cells, datas, epochs, input_loss, input_nodes, input_nodes_adjust,
 
 def step_decay_1(epoch):
     int_rate = 0.001
-    return np.exp(np.log(0.1) / 20) ** epoch * int_rate
+    return np.exp(np.log(0.1) / 100) ** epoch * int_rate
 
 
 def step_decay_2(epoch):
@@ -484,12 +423,13 @@ def lr_scheduler():
 
 
 def main():
+    backend.set_floatx('float64')
     print("Running Training")
     activation = activations.gelu
-    optimizer = optimizers.Adam(learning_rate=0.001)
-    frames = 4
+    initializer = initializers.HeNormal()
+    frames = 2
     points = 100
-    kernal_size = 32
+    kernal_size = 64
     scaling = 250
     simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     # simulations_array = [0, 1]
@@ -501,9 +441,16 @@ def main():
     # datas = tf.data.Dataset.from_tensor_slices((data[0][:], data[1][:])).shuffle(buffer_size=10000).batch(batch_size=32)
 
     lr = callbacks.LearningRateScheduler(step_decay)
-    parameter_epochs = 250
-    testing_epochs = 300
-    iteration_check = 10
+    # lr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=5e-4,
+    #                                          maximal_learning_rate=1e-3,
+    #                                          step_size=4000,
+    #                                          scale_fn=lambda x: 1 / (2.0 ** (x - 1)),
+    #                                          scale_mode='cycle')
+    optimizer = optimizers.Adam(learning_rate=0.01, clipvalue=1.0)
+
+    parameter_epochs = 310
+    testing_epochs = 310
+    iteration_check = 30
     # hyperparameter_explore(lr, data, parameter_epochs, testing_epochs, iteration_check)
 
     test_data = np.array([data[0][10]])
@@ -523,15 +470,14 @@ def main():
     # list_of_files = glob.glob('saved_weights/*')
     # latest_file = max(list_of_files, key=os.path.getctime)
     # print(latest_file)
-    # model = dense_network(100, frames, 4, activation, optimizer, 200, 50, 3, 12)
-    model = dense_network_1(100, frames, 4, activation, optimizer)
-
+    model = dense_network(100, frames, 4, activation, optimizer, 201, 201, 3, 8)
     pred = model(test_data)
     # model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
     print(model.summary())
-    history = model.fit(data[0], data[1], epochs=310, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_split=0.01)
+    history = model.fit(data[0], data[1], callbacks=[lr], epochs=310, verbose=1, shuffle=True, batch_size=32,
+                        validation_split=0.01)
     model.save_weights("a.h5")
-    # model.load_weights("a.h5")
+    # model.load_weights("a_loss0.0024208510294556618.h5")
     # test_data = np.array([data[0][10]])
     # dx = data[1][10, :, 0]
     # dy = data[1][10, :, 1]
@@ -541,16 +487,25 @@ def main():
     # plt.scatter(dx_p, dy_p, s=0.5)
     # plt.scatter(dx, dy, color='r', s=0.5)
     # plt.show()
+
     prediction_losses(model, scaling, frames, points, min_c, max_c)
 
-    for i in range(0, 16):
-        data = creating_data_graph(frames, points, scaling, [i])
-        data[0] = data_normalisation(data[0], min_c, max_c)
-        data[1] = data_normalisation(data[1], min_c[:, 2:], max_c[:, 2:])
-        prediction_gif(model, data, min_c, max_c, scaling, type=False, name="pred_gif_delta" + str(i))
-        xy_predictions, xy_actual = prediction_gif(model, data, min_c, max_c, scaling, name="pred_gif_plot" + str(i))
+    # copy_data = creating_data_graph(frames, points, scaling, [1], initial=True)[0]
+    # for i in range(20):
+    #     a = np.copy(copy_data)
+    #     a[:, :, :, 0] = np.copy(copy_data[:, :, :, 0]) + 0.0004*i + 0.006
+    #     b = data_normalisation(a, min_c, max_c)
+    #     c = np.asarray([b[0]])
+    #     prediction_adjust_gif(model, c, min_c, max_c, scaling, type=True, name="pred_adjust_gif_delta{}".format(i))
 
-    # '''
+    # for i in range(0, 16):
+    #     data = creating_data_graph(frames, points, scaling, [i])
+    #     data[0] = data_normalisation(data[0], min_c, max_c)
+    #     data[1] = data_normalisation(data[1], min_c[:, 2:], max_c[:, 2:])
+    #     prediction_gif(model, data, min_c, max_c, scaling, type=False, name="pred_gif_delta" + str(i))
+    #     xy_predictions, xy_actual = prediction_gif(model, data, min_c, max_c, scaling, name="pred_gif_plot" + str(i))
+    #
+    # # '''
 
 
 def loss_plot(model, data, xy_predictions, xy_actual):
@@ -573,19 +528,21 @@ def loss_plot(model, data, xy_predictions, xy_actual):
     plt.show()
 
 
-def load_data(points, frames, time_step, scaling, simulation_array):
+def load_data(points, frames, time_step, scaling, simulation_array, initial):
     training_data = []
     labels = []
     pbar = tqdm(total=len(simulation_array))
     for simulations in simulation_array:
         simulation = simulations
         pbar.update()
-        data_names = glob.glob("training_data/xmin_Simulation_{}_points_{}/*".format(simulation, points))
+        data_names = glob.glob("training_data/new_xmin_Simulation_{}_points_{}/*".format(simulation, points))
         folder_length = len(data_names)
         data_array = []
+        if initial:
+            folder_length = 50
         for file_num in range(3, folder_length + 1):
             data = np.load(
-                "training_data/xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
+                "training_data/new_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
             data_array.append(data)
         xy_data = []
         for data in data_array:
@@ -598,7 +555,7 @@ def load_data(points, frames, time_step, scaling, simulation_array):
             xy_data.append(xy_array)
         vel_data = velocity_calculation(xy_data, scaling, time_step)
         for i in range(0, len(xy_data) - frames * time_step - time_step):
-        # for i in range(0, 400):
+            # for i in range(0, len(xy_data)-100):
             single = []
             for j in range(0, frames):
                 row = np.array(xy_data[i + j * time_step + time_step])
@@ -656,10 +613,10 @@ def prediction_gif(model, initial_data, min_c, max_c, scaling, type=True, name="
         data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y], scaling)
         prediction[0, :, :-1] = prediction[0, :, 1:]
         for i in range(len(prediction[0])):
-            prediction[0, i, -1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
-            prediction[0, i, -1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
-            prediction[0, i, -1, 2] = pred[0, i, 0]
-            prediction[0, i, -1, 3] = pred[0, i, 1]
+            prediction[0, i, 1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
+            prediction[0, i, 1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
+            prediction[0, i, 1, 2] = pred[0, i, 0]
+            prediction[0, i, 1, 3] = pred[0, i, 1]
 
         if type:
             x = data_unnormalisation(initial_data[0][15 + f * 5, :, -1, 0], min_c[:, 0], max_c[:, 0])
@@ -691,8 +648,53 @@ def prediction_gif(model, initial_data, min_c, max_c, scaling, type=True, name="
     return [x_predictions, y_predictions], [x_actual, y_actual]
 
 
+def prediction_adjust_gif(model, initial_data, min_c, max_c, scaling, length=200, type=True, name="pred_gif"):
+    prediction = initial_data
+    image_array = []
+    x_predictions = []
+    y_predictions = []
+    x_actual = []
+    y_actual = []
+    for f in range(length):
+        fig = plt.Figure(figsize=[3, 3], dpi=100)
+        canvas = FigureCanvas(fig)
+        ax = fig.gca()
+        pred = model(prediction).numpy()
+        # prediction = prediction[:, :, :, :-1]
+        corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
+        corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
+        diff_x = data_unnormalisation(pred[0, :, 0], min_c[:, 2], max_c[:, 2])
+        diff_y = data_unnormalisation(pred[0, :, 1], min_c[:, 3], max_c[:, 3])
+        data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y], scaling)
+        prediction[0, :, :-1] = prediction[0, :, 1:]
+        for i in range(len(prediction[0])):
+            prediction[0, i, 1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
+            prediction[0, i, 1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
+            prediction[0, i, 1, 2] = pred[0, i, 0]
+            prediction[0, i, 1, 3] = pred[0, i, 1]
+
+        if type:
+            x_predictions.append(data_adjusted[0])
+            y_predictions.append(data_adjusted[1])
+            ax.scatter(data_adjusted[1], data_adjusted[0], s=0.5)
+            ax.set_xlim([-1, 1])
+            ax.set_ylim([-1, 1])
+
+        ax.axvline(0)
+        ax.axhline(0)
+        # ax.axis('off')
+        canvas.draw()
+        image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
+        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        image_array.append(image)
+    make_gif(image_array, name)
+    return [x_predictions, y_predictions], [x_actual, y_actual]
+
+
 def prediction_losses(model, scaling, frames, points, min_c, max_c, type=True):
     plt.figure(dpi=200, figsize=[5, 5])
+    loss_totals = []
+    colors = cm.winter(np.linspace(0, 1, 16))
     for sim in range(16):
         data = creating_data_graph(frames, points, scaling, [sim])
         data[0] = data_normalisation(data[0], min_c, max_c)
@@ -712,10 +714,10 @@ def prediction_losses(model, scaling, frames, points, min_c, max_c, type=True):
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y], scaling)
             prediction[0, :, :-1] = prediction[0, :, 1:]
             for i in range(len(prediction[0])):
-                prediction[0, i, -1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
-                prediction[0, i, -1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
-                prediction[0, i, -1, 2] = pred[0, i, 0]
-                prediction[0, i, -1, 3] = pred[0, i, 1]
+                prediction[0, i, 1, 0] = data_normalisation(data_adjusted[0][i], min_c[i, 0], max_c[i, 0])
+                prediction[0, i, 1, 1] = data_normalisation(data_adjusted[1][i], min_c[i, 1], max_c[i, 1])
+                prediction[0, i, 1, 2] = pred[0, i, 0]
+                prediction[0, i, 1, 3] = pred[0, i, 1]
 
             if type:
                 x = data_unnormalisation(data[0][15 + f * 5, :, -1, 0], min_c[:, 0], max_c[:, 0])
@@ -734,9 +736,12 @@ def prediction_losses(model, scaling, frames, points, min_c, max_c, type=True):
             xp = xy_predictions[1][i]
             mse = losses.mean_squared_error(xa, xp).numpy()
             loss_arr.append(mse)
-        plt.plot(loss_arr[:], label=sim)
+        plt.plot(loss_arr[:], label=sim, color=colors[sim])
+        loss_totals.append(loss_arr)
+    arr = pd.DataFrame(loss_totals).mean(axis=0).to_numpy()
+    plt.plot(arr, color='k')
     plt.yscale('log')
-    plt.ylim([10**-9, 0.01])
+    plt.ylim((pow(10, -9), 0.01))
     plt.legend()
     plt.show()
 
@@ -745,35 +750,13 @@ def make_gif(images, name):
     imageio.mimsave("{}.gif".format(name), images)
 
 
-def creating_data_graph(frames, points, scaling, simulations_array):
-    save_data = 1
-    if save_data:
-        data = load_data(points, frames, 5, scaling, simulations_array)
-        data = [data[0][:], data[1][:]]
-        data[0] = np.transpose(data[0], axes=(0, 2, 1, 3))
-        # data[0] = distance_conversion(data, save_files=False)
-    else:
-        training_names = glob.glob("Training_Strings/*")
-        label_names = glob.glob("Label_Strings/*")
-        folder_length = len(training_names)
-        labels_array = []
-        training_array = []
-        pbar = tqdm(total=folder_length)
-        for i in range(folder_length):
-            pbar.update(1)
-            training_file = open(training_names[i], "r")
-            labels_file = open(label_names[i], "r")
-            training_data = training_file.read()
-            training_array.append(np.array(ast.literal_eval(training_data)))
-            labels = labels_file.read()
-            labels_array.append(np.array(ast.literal_eval(labels)))
-            training_file.close()
-            labels_file.close()
-        pbar.close()
-        data = [np.array(training_array), np.array(labels_array)]
+def creating_data_graph(frames, points, scaling, simulations_array, initial=None):
+    data = load_data(points, frames, 5, scaling, simulations_array, initial)
+    data = [data[0][:], data[1][:]]
+    data[0] = np.transpose(data[0], axes=(0, 2, 1, 3))
+    # data[0] = distance_conversion(data, save_files=False)
     del_num = 0
-    pbar = tqdm(total=len(data[1]))
-    errcheck = 50
+    errcheck = 5
     try:
         i = 0
         while True:
@@ -784,11 +767,8 @@ def creating_data_graph(frames, points, scaling, simulations_array):
                 del_num += 1
                 i -= 1
             i += 1
-            pbar.update(1)
     except:
-        print("xx del:", del_num)
-    pbar.close()
-    pbar = tqdm(total=len(data[1]))
+        pass
     try:
         i = 0
         while True:
@@ -799,10 +779,8 @@ def creating_data_graph(frames, points, scaling, simulations_array):
                 del_num += 1
                 i -= 1
             i += 1
-            pbar.update(1)
     except:
-        print("yy del:", del_num)
-    pbar.close()
+        pass
     try:
         i = 0
         while True:
@@ -813,11 +791,8 @@ def creating_data_graph(frames, points, scaling, simulations_array):
                 del_num += 1
                 i -= 1
             i += 1
-            pbar.update(1)
     except:
-        print("xx del:", del_num)
-    pbar.close()
-    pbar = tqdm(total=len(data[1]))
+        pass
     try:
         i = 0
         while True:
@@ -828,10 +803,8 @@ def creating_data_graph(frames, points, scaling, simulations_array):
                 del_num += 1
                 i -= 1
             i += 1
-            pbar.update(1)
     except:
-        print("yy del:", del_num)
-    pbar.close()
+        pass
     return data
 
 
