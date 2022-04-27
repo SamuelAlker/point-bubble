@@ -1,6 +1,8 @@
 import ast
 import os
 import gc
+
+import keras.models
 import pandas as pd
 import matplotlib.cm as cm
 
@@ -51,10 +53,23 @@ def dense_network(input_number, points, activation, optimiser, input_nodes, node
                           size=residual_cells[1])
 
     # x = layers.Dense(200, activation=activations.linear)(x)
-    x = layers.Dense(200, activation=activations.linear, kernel_initializer=initialiser_w,
+    x = layers.Dense(200, activation=activation, kernel_initializer=initialiser_w,
                      bias_initializer=initialiser_b)(x)
+
+    # output_arr = []
+    #
+    # for i in range(100):
+    #     a = layers.Dense(20, activation=activation, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
+    #     # a = layers.Dense(20, activation=activation, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(a)
+    #     a = layers.Dense(2, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(a)
+    #     output_arr.append(a)
+    # x = layers.concatenate(output_arr)
     x = layers.Reshape((100, 2))(x)
+
+    # x = layers.Conv1D(2, 2, activation=activation, padding="same")(x)
+
     model = Model(x_input, x)
+    print(model.summary())
     # model.compile(optimizer=optimiser)
     # print(model.summary())
     # model = CustomModel(model)
@@ -94,19 +109,14 @@ class CustomModel(Model):
         #     return output
 
     def data_normalisation(self, data, min_array, max_array):
-        u = 1
-        l = -1
+        u = 1.
+        l = -1.
         data = ((data - min_array) / (max_array - min_array)) * (u - l) + l
-        # try:
-        #     for i in range(len(data[0])):
-        #         data[:, i] = ((data[:, i] - min_array[i]) / (max_array[i] - min_array[i])) * (u - l) + l
-        # except:
-        #     data = ((data - min_array) / (max_array - min_array)) * (u - l) + l
         return data
 
     def data_unnormalisation(self, data, min_, max_):
-        u = 1
-        l = -1
+        u = 1.
+        l = -1.
         data = (data - l) * (max_ - min_) / (u - l) + min_
         return data
 
@@ -119,37 +129,40 @@ class CustomModel(Model):
 
     def train_step(self, data):
         input_data, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        true_shape = backend.shape(y)
+        # true_shape = backend.shape(y)
         with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape_1:
             y_pred = self(input_data, training=True)
-            loss_1 = losses.mean_absolute_error(y[:, :, 0], y_pred)
-            corr_x = self.data_unnormalisation(input_data[:, :, 0],
-                                               self.min_c_training[:, :, 0],
-                                               self.max_c_training[:, :, 0])
-            corr_y = self.data_unnormalisation(input_data[:, :, 1],
-                                               self.min_c_training[:, :, 1],
-                                               self.max_c_training[:, :, 1])
-            diff_x = self.data_unnormalisation(y_pred[:, :, 0],
-                                               self.min_c_labels[:, :, 0, 0],
-                                               self.max_c_labels[:, :, 0, 0])
-            diff_y = self.data_unnormalisation(y_pred[:, :, 1],
-                                               self.min_c_labels[:, :, 0, 1],
-                                               self.max_c_labels[:, :, 0, 1])
-            data_adjusted = self.position_transform(corr_x, corr_y, diff_x, diff_y)
-            y_pred = self(self.data_normalisation(data_adjusted, self.min_c_training, self.max_c_training), training=True)
-            loss_2 = losses.mean_absolute_error(y[:, :, 1], y_pred)
+            loss_1 = losses.mean_absolute_error(y, y_pred)
+            # corr_x = self.data_unnormalisation(input_data[:, :, 0],
+            #                                    self.min_c_training[:, :, 0],
+            #                                    self.max_c_training[:, :, 0])
+            # corr_y = self.data_unnormalisation(input_data[:, :, 1],
+            #                                    self.min_c_training[:, :, 1],
+            #                                    self.max_c_training[:, :, 1])
+            # diff_x = self.data_unnormalisation(y_pred[:, :, 0],
+            #                                    self.min_c_labels[:, :, 1, 0],
+            #                                    self.max_c_labels[:, :, 1, 0])
+            # diff_y = self.data_unnormalisation(y_pred[:, :, 1],
+            #                                    self.min_c_labels[:, :, 1, 1],
+            #                                    self.max_c_labels[:, :, 1, 1])
+            # data_adjusted = self.position_transform(corr_x, corr_y, y_pred[:, :, 0], y_pred[:, :, 1])
+
+            # data_adjusted = self.position_transform(corr_x, corr_y, diff_x, diff_y)
+            # norm_data = self.data_normalisation(data_adjusted, self.min_c_training, self.max_c_training)
+            # y_pred_2 = self(norm_data, training=True)
+            # loss_2 = losses.mean_absolute_error(y[:, :, 1], y_pred_2)
             loss_tot = loss_1
 
         self.optimizer.minimize(loss_tot, [self.trainable_variables], tape=tape_1)
         self.loss_tracker.update_state(loss_tot)
         loss = self.loss_tracker.result()
         # MAE = self.MAE_tracker.result()
-        return {"loss": loss, "loss_tot": loss_tot, "loss_1": loss_1}
+        return {"loss": loss, "loss_tot": loss_tot}
 
     def test_step(self, data):
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         y_pred = self(x, training=False)
-        loss_tot = losses.mean_absolute_error(y[:, :, 0], y_pred)
+        loss_tot = losses.mean_absolute_error(y, y_pred)
         self.loss_tracker.reset_states()
         # y_pred = self(x, training=False)
         # self.mse.update_state(y, y_pred)
@@ -176,9 +189,9 @@ def main():
     optimizer = optimizers.Adam(learning_rate=0.001, clipvalue=1.0)
     initialiser_w = initializers.VarianceScaling(scale=2.9)
     initialiser_b = initializers.RandomNormal(stddev=0.04)
-    frames = 2
+    frames = 1
     points = 100
-    step = 1
+    step = 5
 
     today = datetime.today()
     dt_string = today.strftime("%d_%m_%Y %H_%M")
@@ -193,45 +206,46 @@ def main():
     data_mae[0] = data_normalisation(data_mae[0], min_c_training, max_c_training)
     data_mae[1] = data_normalisation(data_mae[1], min_c_labels, max_c_labels)
 
-    val_datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][-1000:], data_mae[1][-1000:])) \
-        .shuffle(buffer_size=20000) \
-        .batch(batch_size=32,
-               drop_remainder=True)
-    datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][:-1000], data_mae[1][:-1000])) \
-        .shuffle(buffer_size=20000) \
-        .batch(batch_size=32,
-               drop_remainder=True)
+    # val_datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][-1000:], data_mae[1][-1000:])) \
+    #     .shuffle(buffer_size=20000) \
+    #     .batch(batch_size=32,
+    #            drop_remainder=True)
+    # datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][:-1000], data_mae[1][:-1000])) \
+    #     .shuffle(buffer_size=20000) \
+    #     .batch(batch_size=32,
+    #            drop_remainder=True)
 
     loss_mae = losses.mean_absolute_error
     model_mae = dense_network(100, 2,
                               activation, optimizer,
-                              150, 150, 2, 12,
+                              200, 200, 2, 12,
                               initialiser_w, initialiser_b,
                               loss_mae)
     m1 = tf.convert_to_tensor(min_c_training)
-    model_mae = CustomModel(model_mae,
-                            tf.convert_to_tensor(min_c_training),
-                            tf.convert_to_tensor(max_c_training),
-                            tf.convert_to_tensor(min_c_labels),
-                            tf.convert_to_tensor(max_c_labels))
-    model_mae.compile(optimizer, loss_mae, run_eagerly=True)
+    # model_mae = CustomModel(model_mae,
+    #                         tf.convert_to_tensor(min_c_training),
+    #                         tf.convert_to_tensor(max_c_training),
+    #                         tf.convert_to_tensor(min_c_labels),
+    #                         tf.convert_to_tensor(max_c_labels))
+    # model_mae.compile(optimizer, loss_mae, run_eagerly=False)
 
-    # '''
+    '''
 
     os.makedirs("save_weights/" + dt_string)
 
-    history_mae = model_mae.fit(datas_mae,
-                                epochs=310,
+    history_mae = model_mae.fit(data_mae[0], data_mae[1],
+                                epochs=5,
                                 callbacks=[lr],
                                 verbose=1,
                                 shuffle=True,
                                 batch_size=32,
-                                validation_data=val_datas_mae)
+                                )
 
-    model_mae.i_model.save_weights("save_weights/"
+    model_mae.save_weights("save_weights/"
                                    + dt_string
                                    + "/mae_loss{}.h5".format(history_mae.history["loss"][-1]))
-    loss = history_mae.history['loss_tot']
+    model_mae.save("last_model")
+    loss = history_mae.history['loss']
     # val_loss = history_mae.history['val_loss']
     # plt.figure(figsize=[5, 5], dpi=300)
     # plt.plot(loss[:], color='k')
@@ -245,7 +259,8 @@ def main():
     # plt.show()
 
     '''
-    model_mae.i_model.load_weights("save_weights/26_04_2022 17_47/mae_loss0.01289516594260931.h5")
+    # model_mae = keras.models.load_model("last_model")
+    model_mae.load_weights("mae_loss0.0010667422569220822.h5")
     # '''
 
     prediction_losses(model_mae,
@@ -284,8 +299,8 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, step
         pred = model_mae(prediction).numpy()
         corr_x = data_unnormalisation(prediction[0, :, 0], min_c[:, :, 0], max_c[:, :, 0])
         corr_y = data_unnormalisation(prediction[0, :, 1], min_c[:, :, 1], max_c[:, :, 1])
-        diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, :, 0, 0], max_c_1[:, :, 0, 0])
-        diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, :, 0, 1], max_c_1[:, :, 0, 1])
+        diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, :, 0], max_c_1[:, :, 0])
+        diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, :, 1], max_c_1[:, :, 1])
         data_adjusted = position_transform(corr_x, corr_y, diff_x, diff_y).numpy()
         prediction = data_normalisation(data_adjusted, min_c, max_c)
         x = data_unnormalisation(initial_data[0][f * step + step, :, 0], min_c[:, :, 0], max_c[:, :, 0])
@@ -323,12 +338,12 @@ def prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae
         y_predictions = []
         x_actual = []
         y_actual = []
-        for f in range(int(len(data_mae[0]) / step) - 5):
+        for f in range(10):
             pred = model_mae(prediction).numpy()
             corr_x = data_unnormalisation(prediction[0, :, 0], min_c_mae[:, :, 0], max_c_mae[:, :, 0])
             corr_y = data_unnormalisation(prediction[0, :, 1], min_c_mae[:, :, 1], max_c_mae[:, :, 1])
-            diff_x = data_unnormalisation(pred[0, :, 0], min_c_mae_1[:, :, 0, 0], max_c_mae_1[:, :, 0, 0])
-            diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, :, 0, 1], max_c_mae_1[:, :, 0, 1])
+            diff_x = data_unnormalisation(pred[0, :, 0], min_c_mae_1[:, :, 0], max_c_mae_1[:, :, 0])
+            diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, :, 1], max_c_mae_1[:, :, 1])
             data_adjusted = position_transform(corr_x, corr_y, diff_x, diff_y)
             prediction = data_normalisation(data_adjusted, min_c_mae, max_c_mae)
 
@@ -424,9 +439,11 @@ def data_normalisation_constants(data):
 
     min_placeholder = np.min(data, axis=0)
     max_placeholder = np.max(data, axis=0)
-    if len(np.shape(data)) == 5:
-        min_array.append(min_placeholder[:, 1])
-        max_array.append(max_placeholder[:, 1])
+    if len(np.shape(data)) == 4:
+        min_placeholder[:, 0:1] = min_placeholder[:, 1:2]
+        max_placeholder[:, 0:1] = max_placeholder[:, 1:2]
+        min_array.append(min_placeholder)
+        max_array.append(max_placeholder)
     else:
         min_array.append(min_placeholder)
         max_array.append(max_placeholder)
@@ -435,19 +452,15 @@ def data_normalisation_constants(data):
 
 
 def data_normalisation(data, min_array, max_array):
-    u = 1
-    l = -1
-    try:
-        for i in range(len(data[0])):
-            data[:, i] = ((data[:, i] - min_array[i]) / (max_array[i] - min_array[i])) * (u - l) + l
-    except:
-        data = ((data - min_array) / (max_array - min_array)) * (u - l) + l
+    u = 1.
+    l = -1.
+    data = ((data - min_array) / (max_array - min_array)) * (u - l) + l
     return data
 
 
 def data_unnormalisation(data, min_, max_):
-    u = 1
-    l = -1
+    u = 1.
+    l = -1.
     data = (data - l) * (max_ - min_) / (u - l) + min_
     return data
 
