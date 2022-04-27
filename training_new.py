@@ -32,47 +32,52 @@ class ScaleLayer(tf.keras.layers.Layer):
 def residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=2, size=10):
     x_skip = x
     for i in range(layer_size):
-        #x = layers.Dense(size, activation=activation)(x)
-        x = layers.Dense(size, activation=activation, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
+        # x = layers.Dense(size, activation=activation)(x)
+        x = layers.Dense(size, activation=activation, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(
+            x)
     input_size = x_skip.get_shape()
-    #x = layers.Dense(input_size, activation=activation)(x)
-    #x = ScaleLayer()(x)
+    # x = layers.Dense(input_size, activation=activation)(x)
+    # x = ScaleLayer()(x)
     x = layers.Add()([x, x_skip])
     x = layers.Activation(activation=activation)(x)
     return x
 
 
-def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count, initialiser_w, initialiser_b, loss_func):
+def dense_network(input_number, frames, points, activation, optimiser, input_nodes, nodes, layer_num, cell_count,
+                  initialiser_w, initialiser_b, loss_func):
     tf.compat.v1.keras.backend.clear_session()
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
     # x = layers.Dense(nodes, activation=activation)(x)
 
     residual_cells = [layer_num, nodes]
-    x = layers.Dense(nodes, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
-    #x = layers.Dense(nodes, activation=activations.linear)(x)
+    x = layers.Dense(nodes, activation=activations.linear, kernel_initializer=initialiser_w,
+                     bias_initializer=initialiser_b)(x)
+    # x = layers.Dense(nodes, activation=activations.linear)(x)
     for i in range(cell_count):
         # x = layers.Dropout(0.05)(x)
-        x = residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=residual_cells[0], size=residual_cells[1])
+        x = residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=residual_cells[0],
+                          size=residual_cells[1])
 
-    #x = layers.Dense(200, activation=activations.linear)(x)
-    x = layers.Dense(200, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
+    # x = layers.Dense(200, activation=activations.linear)(x)
+    x = layers.Dense(200, activation=activations.linear, kernel_initializer=initialiser_w,
+                     bias_initializer=initialiser_b)(x)
     x = layers.Reshape((100, 2))(x)
     model = Model(x_input, x)
     # model.compile(optimizer=optimiser)
     # print(model.summary())
     # model = CustomModel(model)
-    model.compile(optimizer=optimiser, loss=loss_func , run_eagerly=False)
+    model.compile(optimizer=optimiser, loss=loss_func, run_eagerly=False)
     return model
 
 
 class CustomModel(Model):
     loss_tracker = metrics.Mean(name="loss")
-    
+
     def __init__(self, i_model):
         super(CustomModel, self).__init__()
         self.i_model = i_model
-    
+
     def call(self, inputs, training=None, mask=None):
         return self.i_model(inputs, training)
 
@@ -205,7 +210,7 @@ def hyperparameter_explore(lr, datas, epochs, test_epochs, check_iteration):
         cell_string = "Cell Number: " + str(cells) + ", Loss = " + str(cells_loss)
         print("#---------------------------#")
         print("Iteration", iteration)
-        #print(input_node_string)
+        # print(input_node_string)
         print(node_string)
         print(layer_string)
         print(cell_string)
@@ -420,7 +425,7 @@ def step_decay_3(epoch):
 
 def step_decay(epoch):
     int_rate = 0.001
-    l_rate = max(int_rate * 0.1 ** int(epoch / 150), 1e-6)
+    l_rate = max(int_rate * 0.1 ** int(epoch / 100), 1e-6)
     if epoch < 10:
         l_rate = 0.001
     return l_rate
@@ -440,17 +445,19 @@ def main():
     initialiser_b = initializers.RandomNormal(stddev=0.04)
     frames = 1
     points = 100
+    step = 1
     kernal_size = 64
-    
+
     today = datetime.today()
     dt_string = today.strftime("%d_%m_%Y %H_%M")
     lr = callbacks.LearningRateScheduler(step_decay)
     lr_2 = callbacks.LearningRateScheduler(step_decay_1)
-    save_best = callbacks.ModelCheckpoint("save_weights\\"+dt_string+"\\a.h5", save_weights_only=True, save_best_only=True, monitor="val_loss" )
+    save_best = callbacks.ModelCheckpoint("save_weights\\" + dt_string + "\\a.h5", save_weights_only=True,
+                                          save_best_only=True, monitor="val_loss")
     parameter_epochs = 310
     testing_epochs = 310
     iteration_check = 30
-    #hyperparameter_explore(lr, data, parameter_epochs, testing_epochs, iteration_check)
+    # hyperparameter_explore(lr, data, parameter_epochs, testing_epochs, iteration_check)
 
     # '''
 
@@ -463,53 +470,49 @@ def main():
     plt.plot(yy[:])
     plt.show()
     # '''
-    
-    
+
     simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-    #simulations_array = [0, 1]
-    
-    data_mae = creating_data_graph(frames, points, simulations_array, 3, 250)
+
+    # simulations_array = [0, 1]
+
+    data_mae = creating_data_graph(frames, points, simulations_array, 3, -1, step)
     min_c_mae, max_c_mae = data_normalisation_constants(data_mae[0], axis=1)
     min_c_mae_1, max_c_mae_1 = data_normalisation_constants(data_mae[1], axis=0)
     data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
     data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
     val_datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][-1000:], data_mae[1][-1000:])).shuffle(buffer_size=20000).batch(batch_size=32, drop_remainder=True)
     datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][:-1000], data_mae[1][:-1000])).shuffle(buffer_size=20000).batch(batch_size=32, drop_remainder=True)
-    
-    
+
+
     loss_mae = losses.mean_absolute_error
-    model_mae = dense_network(100, frames, 2, activation, optimizer, 200, 200, 2, 12, initialiser_w, initialiser_b, loss_mae)
+    model_mae = dense_network(100, frames, 2, activation, optimizer, 150, 150, 2, 12, initialiser_w, initialiser_b, loss_mae)
 
     # model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
-    
-    #'''
-    os.makedirs("save_weights\\"+dt_string)
-    
-    history_mae = model_mae.fit(datas_mae, epochs=500, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_data=val_datas_mae)
 
-    
-    model_mae.save_weights("save_weights\\"+dt_string+"\\mae_loss{}.h5".format(history_mae.history["loss"][-1]))
+    # '''
+    os.makedirs("save_weights/" + dt_string)
 
-    
-    #'''
-    #'''
+    history_mae = model_mae.fit(datas_mae, epochs=310, callbacks=[lr], verbose=1, shuffle=True, batch_size=32,
+                                validation_data=val_datas_mae)
+
+    model_mae.save_weights("save_weights/" + dt_string + "/mae_loss{}.h5".format(history_mae.history["loss"][-1]))
+
     loss = history_mae.history['loss']
     val_loss = history_mae.history['val_loss']
-    plt.figure(figsize=[5,5], dpi=300)
-    plt.plot(loss, color='k')
-    plt.plot(val_loss, color='r')
+    plt.figure(figsize=[5, 5], dpi=300)
+    plt.plot(loss[30:], color='k')
+    plt.plot(val_loss[30:], color='r')
     plt.yscale('log')
     plt.show()
-    
+
     loss = history_mae.history['loss']
-    plt.figure(figsize=[5,5], dpi=300)
-    plt.plot(loss[400:], color='k')
+    plt.figure(figsize=[5, 5], dpi=300)
+    plt.plot(loss[-100:], color='k')
     plt.yscale('log')
     plt.show()
-    #'''
-    '''
+    # '''
  
-    model_mae.load_weights("save_weights\\24_04_2022 01_23\\mae_loss0.0010667422569220822.h5")
+    # model_mae.load_weights("save_weights\\25_04_2022 19_41\mae_loss0.0054742131786924214.h5")
     #model2 = dense_network(100, frames, 4, activation, optimizer, 200, 100, 3, 8, initialiser_w, initialiser_b)
     #model2.load_weights("save_weights\\22_04_2022 19_55\\a0.0177_130.h5")
     
@@ -536,16 +539,17 @@ def main():
     
     #'''
     switch = 100
-    prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
-    #prediction_losses(model2, frames, points, min_c, max_c)
-    #'''
+    prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, step)
+    # prediction_losses(model2, frames, points, min_c, max_c)
+    # '''
     for i in range(0, 16):
-        data_mae = creating_data_graph(frames, points, [i], 3, -1)
+        data_mae = creating_data_graph(frames, points, [i], 3, -1, step)
         data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
         data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
-        
-        #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
-        prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_plot" + str(i))
+
+        # prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
+        prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, step,
+                       name="pred_gif_plot" + str(i))
 
     # '''
 
@@ -570,16 +574,14 @@ def loss_plot(model, data, xy_predictions, xy_actual):
     plt.show()
 
 
-
-
 def position_transform(data, change):
     data[0] = change[0] + data[0]
     data[1] = change[1] + data[1]
     return data
 
 
-def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type=True, name="pred_gif"):
-    prediction = np.array([initial_data[0][10]])
+def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, step, type=True, name="pred_gif"):
+    prediction = np.array([initial_data[0][0]])
     # plt.scatter(*zip(*prediction[0, :, 0:2]))
     # plt.Figure(figsize=[5, 5], dpi=300)
     # plt.xlim([-1, 1])
@@ -592,8 +594,8 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
     y_predictions = []
     x_actual = []
     y_actual = []
-    for f in range(int(len(initial_data[0]) / 5) - 3):
-    #for f in range(300):
+    for f in range(int(len(initial_data[0]) / step) - 5):
+        # for f in range(300):
         fig = plt.Figure(figsize=[5, 5], dpi=300)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
@@ -610,8 +612,8 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
 
 
         if type:
-            x = data_unnormalisation(initial_data[0][15 + f * 5, :, -1, 0], min_c[:, 0], max_c[:, 0])
-            y = data_unnormalisation(initial_data[0][15 + f * 5, :, -1, 1], min_c[:, 1], max_c[:, 1])
+            x = data_unnormalisation(initial_data[0][f * step + step, :, -1, 0], min_c[:, 0], max_c[:, 0])
+            y = data_unnormalisation(initial_data[0][f * step + step, :, -1, 1], min_c[:, 1], max_c[:, 1])
             x_predictions.append(data_adjusted[0])
             y_predictions.append(data_adjusted[1])
             x_actual.append(x)
@@ -621,14 +623,14 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
             ax.set_xlim([-1, 1])
             ax.set_ylim([-1, 1])
         else:
-            x = initial_data[1][15 + f * 5, :, 0]
-            y = initial_data[1][15 + f * 5, :, 1]
+            x = initial_data[1][f * step + step, :, 0]
+            y = initial_data[1][f * step + step, :, 1]
             ax.plot(y, x, linewidth=0.5)
             ax.scatter(pred[0, :, 1], pred[0, :, 0], s=0.5)
             ax.set_xlim([-1, 1])
             ax.set_ylim([-1, 1])
 
-        #ax.axvline(0)
+        # ax.axvline(0)
         ax.axhline(0)
         ax.axis('off')
         canvas.draw()
@@ -639,30 +641,30 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
     return [x_predictions, y_predictions], [x_actual, y_actual]
 
 
-def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, type=True):
-    plt.figure(dpi=200, figsize=[5,5])
+def prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, step, type=True):
+    plt.figure(dpi=200, figsize=[5, 5])
     loss_totals = []
     colors = cm.winter(np.linspace(0, 1, 16))
     for sim in range(16):
-        data_mae = creating_data_graph(frames, points, [sim], 3, -1)
+        data_mae = creating_data_graph(frames, points, [sim], 3, -1, step)
         copy_data = np.copy(data_mae[0])
         data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
         data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
         # data[1] = data_normalisation(data[1], min_c, max_c)
-        prediction = np.array([data_mae[0][10]])
+        prediction = np.array([data_mae[0][0]])
         x_predictions = []
         y_predictions = []
         x_actual = []
         y_actual = []
-        for f in range(int(len(data_mae[0])  / 5) - 3):
+        for f in range(int(len(data_mae[0]) / step) - 5):
             pred = model_mae(prediction).numpy()
             corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c_mae[:, 0], max_c_mae[:, 0])
             corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c_mae[:, 1], max_c_mae[:, 1])
             diff_x = data_unnormalisation(pred[0, :, 0], min_c_mae_1[:, 0], max_c_mae_1[:, 0])
             diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, 1], max_c_mae_1[:, 1])
-            
+
             # prediction = prediction[:, :, :, :-1]
-            
+
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
             prediction[0, :, :-1] = prediction[0, :, 1:]
             for i in range(len(prediction[0])):
@@ -672,16 +674,16 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
                 #prediction[0, i, -1, 3] = pred[0, i, 1]
 
             if type:
-                #if f < switch:
-                x = copy_data[15 + f * 5, :, -1, 0]
-                y = copy_data[15 + f * 5, :, -1, 1]
+                # if f < switch:
+                x = copy_data[f * step + step, :, -1, 0]
+                y = copy_data[f * step + step, :, -1, 1]
                 x_predictions.append(data_adjusted[0])
                 y_predictions.append(data_adjusted[1])
                 x_actual.append(x)
                 y_actual.append(y)
             else:
-                x = copy_data[1][15 + f * 5, :, 0]
-                y = copy_data[1][15 + f * 5, :, 1]
+                x = copy_data[1][ f * step + step, :, 0]
+                y = copy_data[1][+ f * step + step, :, 1]
         xy_predictions, xy_actual = [x_predictions, y_predictions], [x_actual, y_actual]
         loss_arr = []
         for i in range(len(xy_predictions[0])):
@@ -701,8 +703,8 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
 
 def make_gif(images, name):
     imageio.mimsave("{}.gif".format(name), images)
-    
-    
+
+
 def velocity_calculation(data, time_step):
     data = np.array(data)
     velocity = [data[time_step] - data[0]]
@@ -723,12 +725,12 @@ def load_data(points, frames, time_step, simulation_array, initial, final):
         folder_length = len(data_names)
         data_array = []
         if final == -1:
-            end_point=folder_length-1
+            end_point = folder_length - 1
         else:
             end_point = final
         for file_num in range(initial, end_point - 5):
             data = np.load(
-                "training_data\\new_xmin_Simulation_{}_points_{}\\data_{}.npy".format(simulation, points, file_num))
+                "training_data/new_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
             data_array.append(data)
         xy_data = []
         for data in data_array:
@@ -741,11 +743,11 @@ def load_data(points, frames, time_step, simulation_array, initial, final):
             xy_data.append(xy_array)
         vel_data = velocity_calculation(xy_data, time_step)
         for i in range(0, len(xy_data) - frames * time_step - time_step):
-        # for i in range(0, len(xy_data)-100):
+            # for i in range(0, len(xy_data)-100):
             single = []
             for j in range(0, frames):
                 row = np.array(xy_data[i + j * time_step + time_step])
-                #row = np.append(row, vel_data[i + j * time_step], axis=1)
+                # row = np.append(row, vel_data[i + j * time_step], axis=1)
                 single.append(row)
             vel = vel_data[i + frames * time_step]
             training_data.append(single)
@@ -754,8 +756,8 @@ def load_data(points, frames, time_step, simulation_array, initial, final):
     return [np.array(training_data), np.array(labels)]
 
 
-def creating_data_graph(frames, points, simulations_array, initial, final):
-    data = load_data(points, frames, 5, simulations_array, initial, final)
+def creating_data_graph(frames, points, simulations_array, initial, final, step):
+    data = load_data(points, frames, step, simulations_array, initial, final)
     data = [data[0][:], data[1][:]]
     data[0] = np.transpose(data[0], axes=(0, 2, 1, 3))
     return data
@@ -773,8 +775,8 @@ def data_normalisation_constants(data, axis):
         else:
             min_array.append(min_placeholder)
             max_array.append(max_placeholder)
-        
-        
+
+
     return np.array(min_array), np.array(max_array)
 
 
