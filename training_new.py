@@ -550,6 +550,13 @@ def main():
     # '''
 
 
+def create_correction_data(model, training, labels):
+    new_training = []
+    new_labels = []
+    for i in range(len(training)):
+        pred
+
+
 def loss_plot(model, data, xy_predictions, xy_actual):
     loss_arr = []
     y_pred = model(data[0])
