@@ -468,7 +468,7 @@ def main():
     simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     #simulations_array = [0, 1]
     
-    data_mae = creating_data_graph(frames, points, simulations_array, 3, 250)
+    data_mae = creating_data_graph(frames, points, simulations_array, 3, -1)
     min_c_mae, max_c_mae = data_normalisation_constants(data_mae[0], axis=1)
     min_c_mae_1, max_c_mae_1 = data_normalisation_constants(data_mae[1], axis=0)
     data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
@@ -482,17 +482,17 @@ def main():
 
     # model.load_weights("Hyperparameter_Explore\\ab\\weights.h5")
     
-    #'''
-    os.makedirs("save_weights\\"+dt_string)
+    '''
+    os.makedirs("save_weights/"+dt_string)
     
     history_mae = model_mae.fit(datas_mae, epochs=500, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_data=val_datas_mae)
 
     
-    model_mae.save_weights("save_weights\\"+dt_string+"\\mae_loss{}.h5".format(history_mae.history["loss"][-1]))
+    model_mae.save_weights("save_weights/"+dt_string+"/mae_loss{}.h5".format(history_mae.history["loss"][-1]))
 
     
     #'''
-    #'''
+    '''
     loss = history_mae.history['loss']
     val_loss = history_mae.history['val_loss']
     plt.figure(figsize=[5,5], dpi=300)
@@ -507,9 +507,9 @@ def main():
     plt.yscale('log')
     plt.show()
     #'''
-    '''
+    # '''
  
-    model_mae.load_weights("save_weights\\24_04_2022 01_23\\mae_loss0.0010667422569220822.h5")
+    model_mae.load_weights("mae_loss0.0010667422569220822.h5")
     #model2 = dense_network(100, frames, 4, activation, optimizer, 200, 100, 3, 8, initialiser_w, initialiser_b)
     #model2.load_weights("save_weights\\22_04_2022 19_55\\a0.0177_130.h5")
     
@@ -728,7 +728,7 @@ def load_data(points, frames, time_step, simulation_array, initial, final):
             end_point = final
         for file_num in range(initial, end_point - 5):
             data = np.load(
-                "training_data\\new_xmin_Simulation_{}_points_{}\\data_{}.npy".format(simulation, points, file_num))
+                "training_data/new_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, file_num))
             data_array.append(data)
         xy_data = []
         for data in data_array:
