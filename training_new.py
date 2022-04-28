@@ -66,6 +66,30 @@ def dense_network(input_number, frames, points, activation, optimiser, input_nod
     return model
 
 
+def dense_network_2(input_number, points, activation, optimiser, nodes, layer_num, cell_count, initialiser_w, initialiser_b, loss_func):
+    tf.compat.v1.keras.backend.clear_session()
+    x_input = layers.Input(shape=(input_number, points), name="message_input")
+    x = layers.Flatten()(x_input)
+    # x = layers.Dense(nodes, activation=activation)(x)
+
+    residual_cells = [layer_num, nodes]
+    x = layers.Dense(nodes, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
+    #x = layers.Dense(nodes, activation=activations.linear)(x)
+    for i in range(cell_count):
+        # x = layers.Dropout(0.05)(x)
+        x = residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=residual_cells[0], size=residual_cells[1])
+
+    #x = layers.Dense(200, activation=activations.linear)(x)
+    x = layers.Dense(200, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
+    x = layers.Reshape((100, 2))(x)
+    model = Model(x_input, x)
+    # model.compile(optimizer=optimiser)
+    # print(model.summary())
+    # model = CustomModel(model)
+    model.compile(optimizer=optimiser, loss=loss_func , run_eagerly=False)
+    return model
+
+
 class CustomModel(Model):
     loss_tracker = metrics.Mean(name="loss")
     
@@ -420,7 +444,7 @@ def step_decay_3(epoch):
 
 def step_decay(epoch):
     int_rate = 0.001
-    l_rate = max(int_rate * 0.1 ** int(epoch / 150), 1e-6)
+    l_rate = max(int_rate * 0.1 ** int(epoch / 20), 1e-6)
     if epoch < 10:
         l_rate = 0.001
     return l_rate
@@ -466,12 +490,13 @@ def main():
     
     
     simulations_array = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-    #simulations_array = [0, 1]
+    # simulations_array = [0, 1]
     
     data_mae = creating_data_graph(frames, points, simulations_array, 3, -1)
     min_c_mae, max_c_mae = data_normalisation_constants(data_mae[0], axis=1)
     min_c_mae_1, max_c_mae_1 = data_normalisation_constants(data_mae[1], axis=0)
     data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
+    # data_maer = data_unnormalisation(data_mae[0], min_c_mae, max_c_mae)
     data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
     val_datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][-1000:], data_mae[1][-1000:])).shuffle(buffer_size=20000).batch(batch_size=32, drop_remainder=True)
     datas_mae = tf.data.Dataset.from_tensor_slices((data_mae[0][:-1000], data_mae[1][:-1000])).shuffle(buffer_size=20000).batch(batch_size=32, drop_remainder=True)
@@ -514,16 +539,50 @@ def main():
     #model2.load_weights("save_weights\\22_04_2022 19_55\\a0.0177_130.h5")
     
     #'''
-    '''
-    test_data = np.array([data[0][10]])
-    dx = data[1][10, :, 0]
-    dy = data[1][10, :, 1]
-    pred = model(test_data).numpy()
+    # '''
+    test_data = np.array([data_mae[0][10]])
+    dx = data_mae[1][10, :, 0]
+    dy = data_mae[1][10, :, 1]
+    pred = model_mae(test_data).numpy()
     dx_p = pred[0, :, 0]
     dy_p = pred[0, :, 1]
     plt.scatter(dx_p, dy_p, s=0.5)
     plt.scatter(dx, dy, color='r', s=0.5)
     plt.show()
+
+    tran = model_mae(data_mae[0]).numpy()
+    copy_tran = np.copy(tran)
+
+    lab = data_mae[1]
+    lab_ = (tran-np.copy(lab)) * 1000
+    mi, ma = data_normalisation_constants(tran, axis=0)
+    mi1, ma1 = data_normalisation_constants(lab_, axis=0)
+    # tran_t = data_normalisation(tran, mi, ma)
+    # tran_p = data_unnormalisation(tran_t, mi, ma)
+    # lab_t = data_normalisation(lab_, mi1, ma1)
+
+    # mod = dense_network_2(100, 2, activation, optimizer, 50, 3, 8, initialiser_w, initialiser_b, losses.mean_squared_error)
+    # mod.fit(tran, lab_, epochs=70, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_split=0.05)
+    copy_data = np.copy(data_mae[0])
+    new_data = copy_data
+    # new_data = np.concatenate([copy_data, np.expand_dims(copy_tran, 2)], axis=1)
+
+    mod = dense_network(100, frames, 2, activation, optimizer, 50, 50, 3, 8, initialiser_w, initialiser_b, losses.mean_squared_error)
+    mod.fit(new_data, lab_, epochs=70, callbacks=[lr], verbose=1, shuffle=True, batch_size=32, validation_split=0.05)
+
+    lab_r = mod(new_data) / 1000
+    corr_x = copy_tran[10, :, 0]
+    corr_y = copy_tran[10, :, 1]
+    diff_x = lab_r[10, :, 0]
+    diff_y = lab_r[10, :, 1]
+    data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
+
+    dx_p = data_adjusted[0]
+    dy_p = data_adjusted[1]
+    plt.scatter(dx_p, dy_p, s=0.5)
+    plt.scatter(dx, dy, color='r', s=0.5)
+    plt.show()
+
     '''
     '''
     
@@ -535,17 +594,16 @@ def main():
     
     
     #'''
-    switch = 100
-    prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
+    prediction_losses(mod, [mi, ma, mi1, ma1], model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
     #prediction_losses(model2, frames, points, min_c, max_c)
     #'''
-    for i in range(0, 16):
-        data_mae = creating_data_graph(frames, points, [i], 3, -1)
-        data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
-        data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
-        
-        #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
-        prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_plot" + str(i))
+    # for i in range(0, 16):
+    #     data_mae = creating_data_graph(frames, points, [i], 3, -1)
+    #     data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
+    #     data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
+    #
+    #     #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
+    #     prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_plot" + str(i))
 
     # '''
 
@@ -639,13 +697,13 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
     return [x_predictions, y_predictions], [x_actual, y_actual]
 
 
-def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, type=True):
+def prediction_losses(mod, mod_cs, model_mae, frames, points,  min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, type=True):
     plt.figure(dpi=200, figsize=[5,5])
     loss_totals = []
     colors = cm.winter(np.linspace(0, 1, 16))
     for sim in range(16):
         data_mae = creating_data_graph(frames, points, [sim], 3, -1)
-        copy_data = np.copy(data_mae[0])
+        copy_data1 = np.copy(data_mae[0])
         data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
         data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
         # data[1] = data_normalisation(data[1], min_c, max_c)
@@ -654,13 +712,28 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
         y_predictions = []
         x_actual = []
         y_actual = []
-        for f in range(int(len(data_mae[0])  / 5) - 3):
+        for f in range(int(len(data_mae[0]) / 5) - 3):
             pred = model_mae(prediction).numpy()
-            corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c_mae[:, 0], max_c_mae[:, 0])
-            corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c_mae[:, 1], max_c_mae[:, 1])
-            diff_x = data_unnormalisation(pred[0, :, 0], min_c_mae_1[:, 0], max_c_mae_1[:, 0])
-            diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, 1], max_c_mae_1[:, 1])
-            
+            if f > 40:
+                copy_data = np.copy(prediction)
+                new_data = np.concatenate([copy_data, np.expand_dims(pred, 2)], axis=1)
+                lab_r = mod(new_data) / 1000
+
+                corr_x = new_data[0, 100:, 0, 0]
+                corr_y = new_data[0, 100:, 0, 1]
+                diff_x = lab_r[0, :, 0]
+                diff_y = lab_r[0, :, 1]
+                pred = np.array(position_transform([corr_x, corr_y], [diff_x, diff_y]))
+
+                corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c_mae[:, 0], max_c_mae[:, 0])
+                corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c_mae[:, 1], max_c_mae[:, 1])
+                diff_x = data_unnormalisation(pred[0, :], min_c_mae_1[:, 0], max_c_mae_1[:, 0])
+                diff_y = data_unnormalisation(pred[1, :], min_c_mae_1[:, 1], max_c_mae_1[:, 1])
+            else:
+                corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c_mae[:, 0], max_c_mae[:, 0])
+                corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c_mae[:, 1], max_c_mae[:, 1])
+                diff_x = data_unnormalisation(pred[0, :, 0], min_c_mae_1[:, 0], max_c_mae_1[:, 0])
+                diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, 1], max_c_mae_1[:, 1])
             # prediction = prediction[:, :, :, :-1]
             
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
@@ -673,28 +746,28 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
 
             if type:
                 #if f < switch:
-                x = copy_data[15 + f * 5, :, -1, 0]
-                y = copy_data[15 + f * 5, :, -1, 1]
+                x = copy_data1[15 + f * 5, :, -1, 0]
+                y = copy_data1[15 + f * 5, :, -1, 1]
                 x_predictions.append(data_adjusted[0])
                 y_predictions.append(data_adjusted[1])
                 x_actual.append(x)
                 y_actual.append(y)
             else:
-                x = copy_data[1][15 + f * 5, :, 0]
-                y = copy_data[1][15 + f * 5, :, 1]
+                x = copy_data1[1][15 + f * 5, :, 0]
+                y = copy_data1[1][15 + f * 5, :, 1]
         xy_predictions, xy_actual = [x_predictions, y_predictions], [x_actual, y_actual]
         loss_arr = []
         for i in range(len(xy_predictions[0])):
             xa = xy_actual[1][i]
             xp = xy_predictions[1][i]
-            mse = losses.mean_squared_error(xa, xp).numpy()
+            mse = losses.mean_absolute_error(xa, xp).numpy()
             loss_arr.append(mse)
         plt.plot(loss_arr[:], label=sim, color=colors[sim])
         loss_totals.append(loss_arr)
     arr = pd.DataFrame(loss_totals).mean(axis=0).to_numpy()
     plt.plot(arr, color='k')
     plt.yscale('log')
-    plt.ylim((pow(10, -9), 0.01))
+    plt.ylim((5*pow(10, -5), 0.1))
     plt.legend()
     plt.show()
 
