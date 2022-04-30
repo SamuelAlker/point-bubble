@@ -90,6 +90,8 @@ def make_lines(x, y, resolution):
             next_y = float(new_y[0])
         angle_to_next = np.arctan2(next_x - current_x, next_y - current_y)
         distance = np.sqrt((current_x - next_x) ** 2 + (current_y - next_y) ** 2)
+        if distance > 0.2:
+            raise "error"
         loops = 0
         while resolution * loops < distance:
             filled_x.append(current_x)
@@ -279,9 +281,9 @@ def border_data(point_num, simulation_num, file_num):
         final_array[0][i] = data[0][idx]
         final_array[1][i] = data[1][idx]
 
-    if final_array[0][0]-final_array[0][1]>0:
+    if final_array[0][0] - final_array[0][1] > 0:
         final_array = np.flip(final_array, axis=1)
-        final_array = np.insert(final_array, 0, final_array[:,-1], axis=1)
+        final_array = np.insert(final_array, 0, final_array[:, -1], axis=1)
         final_array = np.delete(final_array, -1, axis=1)
 
     return final_array
@@ -291,14 +293,14 @@ def save_border_data(point_num, simulation):
     data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
-        os.mkdir("training_data/new_xmin_Simulation_{}_points_{}/".format(simulation, point_num))
+        os.mkdir("training_data/new2_xmin_Simulation_{}_points_{}/".format(simulation, point_num))
     except OSError:
         print("Folder already exists!")
     pbar = tqdm(total=folder_length - 3)
     for i in range(3, folder_length):
         pbar.update()
         final_data = border_data(point_num, simulation, i)
-        np.save("training_data/new_xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
+        np.save("training_data/new2_xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
     pbar.close()
 
 
@@ -312,7 +314,7 @@ def main():
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(2, 17):
+    for simulation in range(0, 17):
         save_border_data(points, simulation)
         plot_gif(points, simulation)
 
@@ -323,7 +325,7 @@ def main():
 
 
 def plot_gif(points, simulation):
-    data_names = glob.glob("training_data/new_xmin_Simulation_{}_points_{}/*".format(simulation, points))
+    data_names = glob.glob("training_data/new2_xmin_Simulation_{}_points_{}/*".format(simulation, points))
     folder_length = len(data_names)
     image_array = []
     pbar = tqdm(total=folder_length-3)
@@ -332,7 +334,7 @@ def plot_gif(points, simulation):
         fig = plt.Figure(figsize=[3, 3], dpi=200)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        data = np.load("training_data/new_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
+        data = np.load("training_data/new2_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
         ax.scatter(data[1], data[0], color=colors)
         ax.scatter(data[1][0], data[0][0], color='r')
         ax.scatter(data[1][25], data[0][25], color='r')
