@@ -1,11 +1,11 @@
-import ast
 import os
 import gc
 import pandas as pd
 import matplotlib.cm as cm
-
+import scipy.optimize
 import data_creation
-
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1.inset_locator import mark_inset
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import subprocess
 import numpy as np
@@ -13,7 +13,6 @@ import glob
 from tqdm import tqdm
 from tensorflow.keras import layers, initializers, activations, losses, metrics, optimizers, Model, callbacks, backend
 import tensorflow as tf
-import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import imageio
@@ -35,11 +34,7 @@ class ScaleLayer(tf.keras.layers.Layer):
 def residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=2, size=10):
     x_skip = x
     for i in range(layer_size):
-        #x = layers.Dense(size, activation=activation)(x)
         x = layers.Dense(size, activation=activation, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
-    input_size = x_skip.get_shape()
-    #x = layers.Dense(input_size, activation=activation)(x)
-    #x = ScaleLayer()(x)
     x = layers.Add()([x, x_skip])
     x = layers.Activation(activation=activation)(x)
     return x
@@ -49,22 +44,15 @@ def dense_network(input_number, frames, points, activation, optimiser, input_nod
     tf.compat.v1.keras.backend.clear_session()
     x_input = layers.Input(shape=(input_number, frames, points), name="message_input")
     x = layers.Flatten()(x_input)
-    # x = layers.Dense(nodes, activation=activation)(x)
 
     residual_cells = [layer_num, nodes]
     x = layers.Dense(nodes, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
-    #x = layers.Dense(nodes, activation=activations.linear)(x)
     for i in range(cell_count):
-        # x = layers.Dropout(0.05)(x)
         x = residual_cell(x, activation, initialiser_w, initialiser_b, layer_size=residual_cells[0], size=residual_cells[1])
 
-    #x = layers.Dense(200, activation=activations.linear)(x)
     x = layers.Dense(200, activation=activations.linear, kernel_initializer=initialiser_w, bias_initializer=initialiser_b)(x)
     x = layers.Reshape((100, 2))(x)
     model = Model(x_input, x)
-    # model.compile(optimizer=optimiser)
-    # print(model.summary())
-    # model = CustomModel(model)
     model.compile(optimizer=optimiser, loss=loss_func , run_eagerly=False)
     return model
 
@@ -457,6 +445,27 @@ def lr_scheduler():
     return callbacks.LearningRateScheduler(step_decay)
 
 
+def fit_sin(tt, yy):
+    '''Fit sin to the input time sequence, and return fitting parameters "amp", "omega", "phase", "offset", "freq", "period" and "fitfunc"'''
+    tt = np.array(tt)
+    yy = np.array(yy)
+    ff = np.fft.fftfreq(len(tt), (tt[1]-tt[0]))   # assume uniform spacing
+    Fyy = abs(np.fft.fft(yy))
+    guess_freq = abs(ff[np.argmax(Fyy[1:])+1])   # excluding the zero frequency "peak", which is related to offset
+    guess_amp = np.std(yy) * 2.**0.5
+    guess_offset = np.mean(yy)
+    guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0., guess_offset])
+
+    def sinfunc(t, A, w, p, c):
+        return A * np.sin(w*t + p) + c
+    popt, pcov = scipy.optimize.curve_fit(sinfunc, tt, yy, p0=guess)
+    A, w, p, c = popt
+    f = w/(2.*np.pi)
+    fitfunc = lambda t: A * np.sin(w*t + p) + c
+    return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f}
+    # return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f, "fitfunc": fitfunc, "maxcov": np.max(pcov), "rawres": (guess,popt,pcov)}
+
+
 def main():
     backend.set_floatx('float64')
     print("Running Training")
@@ -543,15 +552,15 @@ def main():
     
     #'''
     # '''
-    test_data = np.array([data_mae[0][10]])
-    dx = data_mae[1][10, :, 0]
-    dy = data_mae[1][10, :, 1]
-    pred = model_mae(test_data).numpy()
-    dx_p = pred[0, :, 0]
-    dy_p = pred[0, :, 1]
-    plt.scatter(dx_p, dy_p, s=0.5)
-    plt.scatter(dx, dy, color='r', s=0.5)
-    plt.show()
+    # test_data = np.array([data_mae[0][10]])
+    # dx = data_mae[1][10, :, 0]
+    # dy = data_mae[1][10, :, 1]
+    # pred = model_mae(test_data).numpy()
+    # dx_p = pred[0, :, 0]
+    # dy_p = pred[0, :, 1]
+    # plt.scatter(dx_p, dy_p, s=0.5)
+    # plt.scatter(dx, dy, color='r', s=0.5)
+    # plt.show()
 
     '''
     '''
@@ -568,18 +577,233 @@ def main():
     # data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
     # prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_unstable_fixed")
     # prediction_adjust(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
-    prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
-    #prediction_losses(model2, frames, points, min_c, max_c)
+    # prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
+
+    unstable_orbit_fitting(model_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
+    # single_adjust(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
     # '''
-    for i in range(0, 16):
-        data_mae = creating_data_graph(frames, points, [i], 3, -1)
-        data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
-        data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
-    #
-        #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
-        prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_plot" + str(i))
+    # for i in range(0, 16):
+    #     data_mae = creating_data_graph(frames, points, [i], 3, -1)
+    #     data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
+    #     data_mae[1] = data_normalisation(data_mae[1], min_c_mae_1, max_c_mae_1)
+    # #
+    #     #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, type=False, name="pred_gif_delta" + str(i))
+    #     prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_subplot" + str(i))
 
     # '''
+
+
+def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
+    data_mae = creating_data_graph(1, 100, [3], 3, 50)
+    # prediction[0, :, 0, 0] = prediction[0, :, 0, 0] + 0.017516327542968738
+    central = -0.0002
+    difference = 0.025
+    cl = 0
+    text_file = open("start_average_upper.txt", "r")
+    lines = text_file.readlines()
+    text_file.close()
+    array = np.array(lines[:], dtype=np.float)
+    # text_file_lower = open("start_average_lower.txt", "w")
+    # text_file_upper = open("start_average_upper.txt", "w")
+    standard_average_array = []
+    # fig, axs = plt.subplots(figsize=[7, 5], dpi=300)
+    # axins = inset_axes(axs, 1, 0.5, bbox_to_anchor=[0.4, 0.8], bbox_transform=axs.figure.transFigure)
+    gif = False
+    upper = 0.01260
+    lower = -0.00149
+    diffs = 0.00002
+    count = int((upper-lower)/diffs)+1
+    print("count = ", count)
+    colors = cm.winter(np.linspace(0, 1, count))
+    pbar = tqdm(total=count)
+    for sim in np.arange(lower, upper, diffs):
+        pbar.update(1)
+        prediction = np.copy(data_mae[0][0:1])
+        average = np.average(prediction[0, :, 0, 0])
+        # diff = -average+sim
+        prediction[0, :, 0, 0] = prediction[0, :, 0, 0] + sim
+        start_average = np.average(prediction[0, :, 0, 0])
+        # print("average:", start_average, ", sim: ", sim)
+        average_array = [start_average]
+        prediction = data_normalisation(prediction, min_c, max_c)
+        f = 0
+        image_array = []
+        xy = []
+        while True:
+            if f > 400:
+                break
+
+            pred = model_mae(prediction).numpy()
+            corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
+            corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
+            diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, 0], max_c_1[:, 0])
+            diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, 1], max_c_1[:, 1])
+            data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
+            y_average = np.average(data_adjusted[1])
+
+            if 0.31 < y_average or y_average < -0.31:
+                break
+            if f % 1 == 0 and  30 < f < 1000 and abs(np.average(data_adjusted[0])) < 0.001:
+                try:
+                    dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
+                except:
+                    # print("fail", f)
+                    break
+                final_array = [np.zeros(100), np.zeros(100)]
+                circ = data_creation.circumfrance(dat)
+                length = circ / 100
+                circ_data = data_creation.circ_array(dat)
+                for i in range(100):
+                    idx = (np.abs(circ_data - length * i)).argmin()
+                    final_array[0][i] = dat[0][idx]
+                    final_array[1][i] = dat[1][idx]
+                if final_array[0][0] - final_array[0][1] > 0:
+                    final_array = np.flip(final_array, axis=1)
+                    final_array = np.insert(final_array, 0, final_array[:, -1], axis=1)
+                    final_array = np.delete(final_array, -1, axis=1)
+            else:
+                final_array = data_adjusted
+            y_average = np.average(final_array[0])
+            xy.append(final_array)
+            if 0.41 < y_average or y_average < -0.41:
+                break
+            if f>1:
+                if abs(average_array[-1]-y_average) > 0.05:
+                    break
+            # if len(average_array) > 60:
+            #     if np.min(average_array[-50:]) > -0.022:
+            #         break
+            average_array.append(y_average)
+            prediction[0, :, :-1] = prediction[0, :, 1:]
+            for i in range(len(prediction[0])):
+                prediction[0, i, -1, 0] = data_normalisation(final_array[0][i], min_c[i, 0], max_c[i, 0])
+                prediction[0, i, -1, 1] = data_normalisation(final_array[1][i], min_c[i, 1], max_c[i, 1])
+            f += 1
+            if f > 100:
+                if gif:
+                    fig = plt.Figure(figsize=[3, 3], dpi=100)
+                    canvas = FigureCanvas(fig)
+                    ax = fig.gca()
+                    ax.scatter(data_adjusted[1], data_adjusted[0], s=0.5)
+                    ax.set_xlim([-1, 1])
+                    ax.set_ylim([-1, 1])
+                    ax.axhline(0)
+                    ax.axis('off')
+                    canvas.draw()
+                    image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
+                    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                    image_array.append(image)
+        if gif:
+            make_gif(image_array, "upper_gifs/pred_adjust_0_{}".format(np.round(start_average, 5)))
+        else:
+            # pass
+            # axs.scatter(len(average_array[:]), average_array[-1], color='r', s=0.5)
+            # axs.plot(average_array[:], label=np.round(start_average, 5), color=colors[cl])
+            np.save("generated_samples/COM_{}".format(start_average), np.array(average_array[:]))
+            # axins.plot(average_array[:10], label=np.round(start_average, 5), color=colors[cl], linewidth=0.4)
+        # plt.show()
+        # plt.scatter(xy[-10][1], xy[-10][0])
+        # plt.title(str(sim))
+        # plt.ylim([-1,1])
+        # plt.xlim([-1, 1])
+        # plt.show()
+            # print(start_average)
+            # standard_average_array.append(str(start_average))
+        cl+=1
+
+    # plt.legend(loc='upper left', bbox_to_anchor=(-0.2, 1.05),
+    #       ncol=2, fancybox=True, shadow=True)
+    pbar.close()
+    # axins.set_xlim(0, 0.1)
+    # axins.set_ylim(0.006, 0.008)
+    # axins.yaxis.tick_right()
+    # axins.xaxis.set_visible(False)
+    # mark_inset(axs, axins, loc1=2, loc2=4, fc="none", ec="0.5")
+    # axs.indicate_inset_zoom(axins, edgecolor="black")
+    # plt.draw()
+    # axs.set_ylabel("$\hat{y}$")
+    # axs.legend()
+    # plt.savefig("generated_samples_plot.png")
+    # plt.show()
+    # text_file_upper.close()
+    # text_file_lower.close()
+
+    # x = np.arange(len(average_array[10:250]))
+    # vals = fit_sin(x, average_array[10:250])
+    # print(vals)
+
+
+def single_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1):
+    com = 0.01584
+    data_mae = creating_data_graph(1, 100, [3], 3, 50)
+    data_mae[0] = data_normalisation(data_mae[0], min_c, max_c)
+    prediction = np.copy(data_mae[0][0:1])
+    average = np.average(prediction[0, :, 0, 0])
+    diff = -average + com
+    prediction[0, :, 0, 0] = prediction[0, :, 0, 0] + diff
+    # image_array = []
+    plt.Figure(figsize=[5, 5], dpi=200)
+    average_array = []
+    f = 0
+    succ_count = 0
+    while True:
+        # fig = plt.Figure(figsize=[3, 3], dpi=100)
+        # canvas = FigureCanvas(fig)
+        # ax = fig.gca()
+        pred = model_mae(prediction).numpy()
+        corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
+        corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
+        diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, 0], max_c_1[:, 0])
+        diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, 1], max_c_1[:, 1])
+        data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
+
+        if f % 1 == 0 and f > 1 and abs(np.average(data_adjusted[0])) < 0.0002:
+            succ_count += 1
+            try:
+                dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
+            except:
+                print("fail", f, com)
+                break
+            final_array = [np.zeros(100), np.zeros(100)]
+            circ = data_creation.circumfrance(dat)
+            length = circ / 100
+            circ_data = data_creation.circ_array(dat)
+            for i in range(100):
+                idx = (np.abs(circ_data - length * i)).argmin()
+                final_array[0][i] = dat[0][idx]
+                final_array[1][i] = dat[1][idx]
+            if final_array[0][0] - final_array[0][1] > 0:
+                final_array = np.flip(final_array, axis=1)
+                final_array = np.insert(final_array, 0, final_array[:, -1], axis=1)
+                final_array = np.delete(final_array, -1, axis=1)
+        else:
+            final_array = data_adjusted
+        y_average = np.average(final_array[0])
+        # if abs(y_average) > 0.04:
+        #     break
+        if len(average_array) > 60:
+            if np.min(average_array[-50:]) > -0.022:
+                break
+        average_array.append(y_average)
+        prediction[0, :, :-1] = prediction[0, :, 1:]
+        for i in range(len(prediction[0])):
+            prediction[0, i, -1, 0] = data_normalisation(final_array[0][i], min_c[i, 0], max_c[i, 0])
+            prediction[0, i, -1, 1] = data_normalisation(final_array[1][i], min_c[i, 1], max_c[i, 1])
+        # ax.scatter(data_adjusted[1], data_adjusted[0], s=0.5)
+        # ax.set_xlim([-1, 1])
+        # ax.set_ylim([-1, 1])
+        #
+        # ax.axhline(0)
+        # ax.axis('off')
+        # canvas.draw()
+        # image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
+        # image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        # image_array.append(image)
+        f += 1
+    plt.plot(average_array, label=np.round(com, 5), color='b')
+    plt.show()
+
+
 
 def prediction_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1):
     data_mae = creating_data_graph(frames, points, [15], 3, 50)
@@ -590,8 +814,8 @@ def prediction_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1)
     upper = 0.01757
     lower = 0.0175
 
-    central = 0.017516327542968738
-    difference = 0.000001
+    central = 0.01756632754296874
+    difference = 0.001
     while True:
         best_len = 0
         cl = 0
@@ -603,7 +827,7 @@ def prediction_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1)
             plt.Figure(figsize=[5, 5], dpi=200)
             average_array = []
             f = 0
-
+            succ_count = 0
             while True:
                 # fig = plt.Figure(figsize=[3, 3], dpi=100)
                 # canvas = FigureCanvas(fig)
@@ -614,7 +838,9 @@ def prediction_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1)
                 diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, 0], max_c_1[:, 0])
                 diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, 1], max_c_1[:, 1])
                 data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
-                if f % 10 == 0 and f > 100 and abs(np.average(data_adjusted[0])) < 0.001:
+
+                if f % 1 == 0 and f > 1 and abs(np.average(data_adjusted[0])) < 0.0002:
+                    succ_count+=1
                     try:
                         dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
                     except:
@@ -661,7 +887,7 @@ def prediction_adjust(model_mae, frames, points, min_c, max_c, min_c_1, max_c_1)
                 new_central = sim
             plt.plot(average_array, label=np.round(sim, 5), color=colors[cl])
             cl+=1
-            print(cl, sim, len(average_array))
+            print(cl, sim, len(average_array), succ_count)
         plt.ylim([-0.04,0.04])
         # plt.legend(loc=2)
         plt.show()
@@ -693,20 +919,21 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
     y_predictions = []
     x_actual = []
     y_actual = []
+    mse = []
     for f in range(int(len(initial_data[0]) / 5) - 3):
     # for f in range(1550):
     #     if f%10==0:
     #         print(f)
-        fig = plt.Figure(figsize=[5, 5], dpi=200)
+        fig, axs = plt.subplots(3, 1, figsize=[5, 7], dpi=200, gridspec_kw={'height_ratios': [3, 1, 1]})
         canvas = FigureCanvas(fig)
-        ax = fig.gca()
+        # ax = fig.gca()
         pred = model_mae(prediction).numpy()
         corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c[:, 0], max_c[:, 0])
         corr_y = data_unnormalisation(prediction[0, :, -1, 1], min_c[:, 1], max_c[:, 1])
         diff_x = data_unnormalisation(pred[0, :, 0], min_c_1[:, 0], max_c_1[:, 0])
         diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, 1], max_c_1[:, 1])
         data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
-        if f % 10 == 0 and f > 100 and abs(np.average(data_adjusted[0])) < 0.001:
+        if f % 1 == 0 and f > 30 and abs(np.average(data_adjusted[0])) < 0.002:
             try:
                 dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
             except:
@@ -743,21 +970,25 @@ def prediction_gif(model_mae, initial_data, min_c, max_c, min_c_1, max_c_1, type
             y_predictions.append(final_array[1])
             x_actual.append(x)
             y_actual.append(y)
-            ax.scatter(y, x, s=0.5)
-            ax.scatter(final_array[1], final_array[0], s=0.5)
-            ax.set_xlim([-1, 1])
-            ax.set_ylim([-1, 1])
+            axs[0].scatter(y, x, s=0.5)
+            axs[0].scatter(final_array[1], final_array[0], s=0.5)
+            axs[0].set_xlim([-1, 1])
+            axs[0].set_ylim([-1, 1])
+            mse = losses.mean_absolute_error(x_actual, x_predictions).numpy()
         else:
             x = initial_data[1][5 + f * 5, :, 0]
             y = initial_data[1][5 + f * 5, :, 1]
-            ax.plot(y, x, linewidth=0.5)
-            ax.scatter(pred[0, :, 1], pred[0, :, 0], s=0.5)
-            ax.set_xlim([-1, 1])
-            ax.set_ylim([-1, 1])
-
+            axs[0].plot(y, x, linewidth=0.5)
+            axs[0].scatter(pred[0, :, 1], pred[0, :, 0], s=0.5)
+            axs[0].set_xlim([-1, 1])
+            axs[0].set_ylim([-1, 1])
+        axs[1].plot(np.average(x_predictions, axis=1))
+        axs[1].plot(np.average(x_actual, axis=1))
+        axs[2].plot(mse)
+        axs[2].set_yscale('log')
         #ax.axvline(0)
-        ax.axhline(0)
-        ax.axis('off')
+        axs[0].axhline(0)
+        # ax.axis('off')
         canvas.draw()
         image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
         image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
@@ -770,7 +1001,7 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
     plt.figure(dpi=200, figsize=[5,5])
     loss_totals = []
     colors = cm.winter(np.linspace(0, 1, 16))
-    for sim in range(16):
+    for sim in range(0,16):
         data_mae = creating_data_graph(frames, points, [sim], 3, -1)
         copy_data1 = np.copy(data_mae[0])
         data_mae[0] = data_normalisation(data_mae[0], min_c_mae, max_c_mae)
@@ -781,6 +1012,7 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
         y_predictions = []
         x_actual = []
         y_actual = []
+        count = 0
         for f in range(int(len(data_mae[0]) / 5) - 3):
             pred = model_mae(prediction).numpy()
             corr_x = data_unnormalisation(prediction[0, :, -1, 0], min_c_mae[:, 0], max_c_mae[:, 0])
@@ -789,7 +1021,9 @@ def prediction_losses(model_mae, frames, points,  min_c_mae, max_c_mae, min_c_ma
             diff_y = data_unnormalisation(pred[0, :, 1], min_c_mae_1[:, 1], max_c_mae_1[:, 1])
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
             # plt.scatter(data_adjusted[0], data_adjusted[1], s=0.3)
-            if f % 5 == 0 and f > 20 and abs(np.average(data_adjusted[0])) < 0.001:
+            if f % 1 == 0 and f > 1 and abs(np.average(data_adjusted[0])) > 0.031:
+                count+=1
+                print(count, f)
                 try:
                     dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
                 except:
