@@ -118,7 +118,7 @@ def convert_dat_files(variant_range, resolution=0.0001, inversions=[False]):
     Output:
         Nothing
     """
-    simulation_names = glob.glob("Simulation_data/*")
+    simulation_names = glob.glob("New_Simulation_data/*")
     simulation_index = 0
     for simulation in simulation_names:
         dat_files = glob.glob("{}/b*.dat".format(simulation))
@@ -149,7 +149,7 @@ def convert_dat_files(variant_range, resolution=0.0001, inversions=[False]):
                     ))
                 # Making a directory for the images
                 try:
-                    os.mkdir("Simulation_data_extrapolated/Simulation_{}_{}_{}_{}".format(
+                    os.mkdir("New_Simulation_data_extrapolated/Simulation_{}_{}_{}_{}".format(
                         inversion, variant, resolution, simulation_index
                     ))
                 except OSError:
@@ -161,7 +161,7 @@ def convert_dat_files(variant_range, resolution=0.0001, inversions=[False]):
                     # Saving to memory
                     data = np.array(
                         [((-1) ** (not inversion)) * x, y + (variant / BASE_SIZE)])  # numpy switch the x and y here!
-                    np.save("Simulation_data_extrapolated/Simulation_{}_{}_{}_{}/data_{}".format(
+                    np.save("New_Simulation_data_extrapolated/Simulation_{}_{}_{}_{}/data_{}".format(
                         inversion, variant, resolution, simulation_index, step_number
                     ), data)
                 # Now the heavy lifting
@@ -204,7 +204,7 @@ def positive_values(x_array, y_array):
 
 def plot_for_offset(file_num):
     # Data for plotting
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_" + str(file_num) + ".npy")
+    file = np.load("New_Simulation_data_extrapolated/Simulation_False_0_0.0002_0/data_" + str(file_num) + ".npy")
 
     idx = find_zero_2(file[1], file[0])
     print(file_num, idx)
@@ -267,7 +267,7 @@ def circ_array(arrays):
 
 def border_data(point_num, simulation_num, file_num):
     # data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/*")
-    file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_" + str(simulation_num) + "/data_" + str(
+    file = np.load("New_Simulation_data_extrapolated/Simulation_False_0_0.0002_" + str(simulation_num) + "/data_" + str(
         file_num) + ".npy")
     final_array = [np.zeros(point_num), np.zeros(point_num)]
     idx = find_zero_2(file[1], file[0])
@@ -290,17 +290,17 @@ def border_data(point_num, simulation_num, file_num):
 
 
 def save_border_data(point_num, simulation):
-    data_names = glob.glob("Simulation_data_extrapolated/Simulation_False_0_0.0001_{}/*".format(str(simulation)))
+    data_names = glob.glob("New_Simulation_data_extrapolated/Simulation_False_0_0.0002_{}/*".format(str(simulation)))
     folder_length = len(data_names)
     try:
-        os.mkdir("training_data/new2_xmin_Simulation_{}_points_{}/".format(simulation, point_num))
+        os.mkdir("training_data/new_new2_xmin_Simulation_{}_points_{}/".format(simulation, point_num))
     except OSError:
         print("Folder already exists!")
     pbar = tqdm(total=folder_length - 3)
     for i in range(3, folder_length):
         pbar.update()
         final_data = border_data(point_num, simulation, i)
-        np.save("training_data/new2_xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
+        np.save("training_data/new_new2_xmin_Simulation_{}_points_{}/data_{}".format(simulation, point_num, i), final_data)
     pbar.close()
 
 
@@ -310,11 +310,11 @@ def make_gif(images, name):
 
 def main():
     print("Running:")
-    #convert_dat_files([0], 0.0002)
+    # convert_dat_files([0], 0.0002)
     # for i in range(1, 11):
     #     save_border_data(1000, i)
     points = 100
-    for simulation in range(0, 17):
+    for simulation in range(2, 6):
         save_border_data(points, simulation)
         plot_gif(points, simulation)
 
@@ -325,7 +325,7 @@ def main():
 
 
 def plot_gif(points, simulation):
-    data_names = glob.glob("training_data/new2_xmin_Simulation_{}_points_{}/*".format(simulation, points))
+    data_names = glob.glob("training_data/new_new2_xmin_Simulation_{}_points_{}/*".format(simulation, points))
     folder_length = len(data_names)
     image_array = []
     pbar = tqdm(total=folder_length-3)
@@ -334,7 +334,7 @@ def plot_gif(points, simulation):
         fig = plt.Figure(figsize=[3, 3], dpi=200)
         canvas = FigureCanvas(fig)
         ax = fig.gca()
-        data = np.load("training_data/new2_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
+        data = np.load("training_data/new_new2_xmin_Simulation_{}_points_{}/data_{}.npy".format(simulation, points, i))
         ax.scatter(data[1], data[0], color=colors)
         ax.scatter(data[1][0], data[0][0], color='r')
         ax.scatter(data[1][25], data[0][25], color='r')
@@ -355,7 +355,7 @@ def plot_gif(points, simulation):
 def plot_circ_graphs():
     for i in range(700, 960, 20):
         final_data = border_data(100, 0, i)
-        file = np.load("Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_" + str(i) + ".npy")
+        file = np.load("New_Simulation_data_extrapolated/Simulation_False_0_0.0001_0/data_" + str(i) + ".npy")
         plt.figure(figsize=[5, 5])
         plt.axvline(0, color="r")
         plt.plot(file[1], file[0])

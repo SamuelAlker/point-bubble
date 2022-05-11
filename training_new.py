@@ -454,7 +454,7 @@ def fit_sin(tt, yy):
     guess_freq = abs(ff[np.argmax(Fyy[1:])+1])   # excluding the zero frequency "peak", which is related to offset
     guess_amp = np.std(yy) * 2.**0.5
     guess_offset = np.mean(yy)
-    guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0., guess_offset])
+    guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0.2, guess_offset])
 
     def sinfunc(t, A, w, p, c):
         return A * np.sin(w*t + p) + c
@@ -570,7 +570,7 @@ def main():
     #data[1] = data_normalisation(data[1], min_c_1, max_c_1)
     #prediction_gif(model, data, min_c, max_c, min_c_1, max_c_1, name="pred_cont_plot" + str(1))
     
-    
+    plot_data()
     
     #'''
     # data_mae = creating_data_graph(frames, points, [15], 3, 50)
@@ -579,7 +579,7 @@ def main():
     # prediction_adjust(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
     # prediction_losses(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
 
-    unstable_orbit_fitting(model_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
+    # unstable_orbit_fitting(model_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
     # single_adjust(model_mae, frames, points, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1)
     # '''
     # for i in range(0, 16):
@@ -591,6 +591,21 @@ def main():
     #     prediction_gif(model_mae, data_mae, min_c_mae, max_c_mae, min_c_mae_1, max_c_mae_1, name="pred_gif_subplot" + str(i))
 
     # '''
+
+
+def plot_data():
+    for i in range(15):
+        data_mae = creating_data_graph(1, 100, [i], 500, -1)
+        x = data_mae[0][-4, :, 0, 0]
+        x = np.append(x[-1], x)
+        y = data_mae[0][-4, :, 0, 1]
+        y = np.append(y[-1], y)
+        plt.ylim([-1, 1])
+        plt.xlim([-1, 1])
+        plt.axis('off')
+        plt.plot(y, x, color='k')
+        plt.savefig("last_frame_testing/{}".format(i), transparent=True)
+        plt.show()
 
 
 def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
@@ -606,17 +621,22 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
     # text_file_lower = open("start_average_lower.txt", "w")
     # text_file_upper = open("start_average_upper.txt", "w")
     standard_average_array = []
-    # fig, axs = plt.subplots(figsize=[7, 5], dpi=300)
+    fig, axs = plt.subplots(figsize=[7, 5], dpi=300)
     # axins = inset_axes(axs, 1, 0.5, bbox_to_anchor=[0.4, 0.8], bbox_transform=axs.figure.transFigure)
     gif = False
-    upper = 0.01260
-    lower = -0.00149
+    upper = 0.0104
+    lower = 0.0071
     diffs = 0.00002
-    count = int((upper-lower)/diffs)+1
-    print("count = ", count)
+    # count = int((upper-lower)/diffs)+1
+    # print("count = ", count)
+    xy_array = []
+    # sims = np.arange(lower, upper, diffs)
+    sims = [0, 0.001, 0.0021, 0.0030, 0.0125]
+    count = len(sims)
     colors = cm.winter(np.linspace(0, 1, count))
     pbar = tqdm(total=count)
-    for sim in np.arange(lower, upper, diffs):
+    # for sim in np.arange(lower, upper, diffs):
+    for sim in sims:
         pbar.update(1)
         prediction = np.copy(data_mae[0][0:1])
         average = np.average(prediction[0, :, 0, 0])
@@ -630,7 +650,7 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
         image_array = []
         xy = []
         while True:
-            if f > 400:
+            if f > 175:
                 break
 
             pred = model_mae(prediction).numpy()
@@ -640,10 +660,7 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
             diff_y = data_unnormalisation(pred[0, :, 1], min_c_1[:, 1], max_c_1[:, 1])
             data_adjusted = position_transform([corr_x, corr_y], [diff_x, diff_y])
             y_average = np.average(data_adjusted[1])
-
-            if 0.31 < y_average or y_average < -0.31:
-                break
-            if f % 1 == 0 and  30 < f < 1000 and abs(np.average(data_adjusted[0])) < 0.001:
+            if f % 1 == 0 and 1 < f < 1000 and abs(np.average(data_adjusted[0])) < 0.001:
                 try:
                     dat = data_creation.make_lines(data_adjusted[0], data_adjusted[1], 0.001)
                 except:
@@ -668,11 +685,13 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
             if 0.41 < y_average or y_average < -0.41:
                 break
             if f>1:
-                if abs(average_array[-1]-y_average) > 0.05:
+                if abs(average_array[-1]-y_average) > 0.03:
                     break
-            # if len(average_array) > 60:
-            #     if np.min(average_array[-50:]) > -0.022:
-            #         break
+            if len(average_array) > 60:
+                if abs(np.max(average_array[-50:])) < 0.018:
+                    break
+                # if np.std(average_array[-10:]) < 0.0012:
+                #     break
             average_array.append(y_average)
             prediction[0, :, :-1] = prediction[0, :, 1:]
             for i in range(len(prediction[0])):
@@ -697,9 +716,9 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
             make_gif(image_array, "upper_gifs/pred_adjust_0_{}".format(np.round(start_average, 5)))
         else:
             # pass
-            # axs.scatter(len(average_array[:]), average_array[-1], color='r', s=0.5)
-            # axs.plot(average_array[:], label=np.round(start_average, 5), color=colors[cl])
-            np.save("generated_samples/COM_{}".format(start_average), np.array(average_array[:]))
+            axs.scatter(len(average_array[:]), average_array[-1], color='k', s=4.5, marker='x')
+            axs.plot(average_array[:], label=np.round(start_average, 5), color=colors[cl])
+            # np.save("generated_samples/COM_{}".format(start_average), np.array(average_array[:]))
             # axins.plot(average_array[:10], label=np.round(start_average, 5), color=colors[cl], linewidth=0.4)
         # plt.show()
         # plt.scatter(xy[-10][1], xy[-10][0])
@@ -709,11 +728,46 @@ def unstable_orbit_fitting(model_mae, min_c, max_c, min_c_1, max_c_1):
         # plt.show()
             # print(start_average)
             # standard_average_array.append(str(start_average))
+        xy_array.append(xy)
         cl+=1
 
     # plt.legend(loc='upper left', bbox_to_anchor=(-0.2, 1.05),
     #       ncol=2, fancybox=True, shadow=True)
     pbar.close()
+    # for i in range(len(xy_array)-1):
+    #     t_diff = []
+    #     for j in range(np.minimum(len(xy_array[i]), len(xy_array[i+1]))):
+    #         x1 = np.array(xy_array[i][j][0])
+    #         x2 = np.array(xy_array[i+1][j][0])
+    #         x_diff = np.power(np.abs(x1 - x2), 2)
+    #         y1 = np.array(xy_array[i][j][1])
+    #         y2 = np.array(xy_array[i + 1][j][1])
+    #         y_diff = np.power(np.abs(y1 - y2), 2)
+    #         diff = np.sum(np.sqrt(x_diff+y_diff))
+    #         if len(t_diff) > 1:
+    #             if (diff-t_diff[-1])/t_diff[-1] > 0.2:
+    #                 break
+    #         t_diff.append(diff)
+    #     plt.plot(t_diff, color=colors[i])
+    # plt.yscale('log')
+    # x = np.average(np.array(xy_array[-1])[75:150, 0])
+    # y = np.average(np.array(xy_array[-1])[0:150, 0], axis=1)
+    # x = np.arange(len(y))
+    # vals = fit_sin(x, y)
+    t = np.arange(0, 175)
+    ys = -0.027983396808249045*np.sin(0.21087895045432684*t+0.05372832864299764)+0.004779817208552361
+    # print(vals)
+    axs.set_ylabel("$\hat{y}$")
+    axs.plot(t+1, ys, color='k', linestyle='--')
+    plt.show()
+    for i in range(len(xy_array)):
+        x = np.array(xy_array[i])[-4, 0]
+        y = np.array(xy_array[i])[-4, 1]
+        plt.plot(x, y)
+        plt.ylim([-1,1])
+        plt.xlim([-1,1])
+        plt.show()
+
     # axins.set_xlim(0, 0.1)
     # axins.set_ylim(0.006, 0.008)
     # axins.yaxis.tick_right()
